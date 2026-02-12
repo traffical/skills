@@ -59,6 +59,8 @@ Look for a `.traffical/` directory or `traffical.yaml` in the project root. If i
 
 If no `.traffical/` directory exists, initialize Traffical:
 
+> **Important:** The `--api-key` flag requires a real API key. Never fabricate or guess API keys. If no key is available in environment variables (`TRAFFICAL_API_KEY`) or `~/.trafficalrc`, ask the user to provide one from https://app.traffical.io/settings/api-keys.
+
 ```bash
 # Install the CLI
 npm install -g @traffical/cli
