@@ -53,7 +53,7 @@ Traffical is **parameter-first**. You define parameters with defaults, and Traff
 
 **Always use the Traffical CLI to manage parameters.** The CLI is the primary tool for setting up and syncing configuration. Do not skip it.
 
-1. **Initialize** — Run `npx @traffical/cli init --api-key <management-key>` to set up the project (or check for an existing `.traffical/` directory). The user must provide a Management Key or Full Access key from the dashboard.
+1. **Initialize** — Run `npx @traffical/cli init --api-key <management-key> --framework <name> --yes` to set up the project non-interactively (or check for an existing `.traffical/` directory). The user must provide a Management Key or Full Access key from the dashboard. Always pass `--framework` and `--yes` to avoid interactive prompts.
 2. **Define parameters** — Add parameters and events to `.traffical/config.yaml`
 3. **Sync** — Run `npx @traffical/cli push` to sync parameters to the Traffical platform
 4. **Install SDK** — Add the appropriate SDK package to your project
@@ -86,8 +86,24 @@ If no `.traffical/` directory exists, initialize Traffical:
 > **Important:** The `--api-key` flag requires a real Management Key or Full Access key. **Never fabricate or guess API keys.** If no key is available in environment variables (`TRAFFICAL_API_KEY`) or `~/.trafficalrc`, ask the user to provide one from https://app.traffical.io/settings/api-keys.
 
 ```bash
+# Basic init (will auto-detect framework and prompt if needed):
 npx @traffical/cli init --api-key <management-key>
+
+# Fully non-interactive init (recommended for AI agents and CI/CD):
+npx @traffical/cli init --api-key <management-key> --framework react --yes
 ```
+
+**Available flags for `init`:**
+
+| Flag | Description |
+|------|-------------|
+| `--api-key <key>` | Management or Full Access key (falls back to `TRAFFICAL_API_KEY` env var or `~/.trafficalrc`) |
+| `--framework <name>` | Skip framework detection. Values: `react`, `nextjs`, `svelte`, `sveltekit`, `vue`, `nuxt`, `node` |
+| `--project <id>` | Use a specific project (skips project selection prompt, useful with org-scoped keys) |
+| `-y, --yes` | Auto-accept all detected defaults — no interactive prompts |
+| `--no-sdk-key` | Skip automatic SDK key creation |
+
+> **For AI agents:** Always pass `--framework` and `--yes` to avoid interactive prompts that will hang in non-TTY environments.
 
 This creates:
 
@@ -100,15 +116,9 @@ This creates:
 └── TEMPLATES.md     # Framework-specific code templates
 ```
 
-The CLI auto-detects your framework (React, Next.js, Svelte, SvelteKit, Vue, Nuxt, Node.js) and generates appropriate templates.
+The CLI auto-detects your framework (React, Next.js, Svelte, SvelteKit, Vue, Nuxt, Node.js) and generates appropriate templates. Existing synced parameters and events are imported into `config.yaml` automatically.
 
 **After init**, add `TRAFFICAL_API_KEY` from `.traffical/.env` to your project's `.env` or hosting environment for runtime SDK use. The auto-generated key has `sdk:read` and `sdk:write` scopes — just enough for parameter resolution and event tracking.
-
-To skip automatic SDK key creation, pass `--no-sdk-key`:
-
-```bash
-npx @traffical/cli init --api-key <management-key> --no-sdk-key
-```
 
 ### Managing parameters with the CLI
 
