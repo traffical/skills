@@ -310,6 +310,33 @@ const params = traffical.getParams({
 traffical.track("purchase", { value: 49.99 }, { unitKey: "user_789" });
 ```
 
+### Node.js (CLI / Scripts)
+
+For non-web contexts like CLI tools, batch jobs, or scripts, you can use `@traffical/node` without a web server. Use a machine or job identifier instead of a user ID:
+
+```typescript
+import { createTrafficalClient } from "@traffical/node";
+
+const traffical = await createTrafficalClient({
+  orgId: "org_xxx",        // from .traffical/config.yaml
+  projectId: "proj_xxx",   // from .traffical/config.yaml
+  env: "production",
+  apiKey: process.env.TRAFFICAL_API_KEY!,
+});
+
+const params = traffical.getParams({
+  context: { unitKey: "batch-job" },
+  defaults: {
+    "feature.new_algorithm": false,
+    "processing.batch_size": 100,
+  },
+});
+
+if (params["feature.new_algorithm"]) {
+  // Use new algorithm
+}
+```
+
 ### track() API
 
 The `track()` signature differs between client-side and server-side SDKs:
@@ -369,6 +396,53 @@ events:
 | `count` | Numeric counts (clicks, items, views) |
 | `rate` | Percentages or ratios |
 | `boolean` | Binary events (happened or not) |
+
+### Adding events to config.yaml
+
+Define events in the `events:` block of `.traffical/config.yaml`:
+
+```yaml
+events:
+  purchase:
+    valueType: currency
+    unit: USD
+    description: User completes a purchase
+
+  signup:
+    valueType: boolean
+    description: User creates an account
+
+  page_view:
+    valueType: count
+    description: User views a page
+```
+
+Each event has:
+- **`valueType`** (required): `currency`, `count`, `rate`, or `boolean`
+- **`unit`** (optional): unit label for currency events (e.g., `USD`, `EUR`)
+- **`description`** (optional but recommended): human-readable explanation
+
+After adding events, run `npx @traffical/cli push` to sync them to the platform.
+
+Events discovered at runtime (via `track()` calls) will appear in the dashboard even without config definitions, but defining them in config gives you descriptions, value types, and keeps the config file as the source of truth.
+
+### Namespaces
+
+Namespaces are optional organizational groupings for parameters. They help organize parameters in the dashboard but do not affect how you use them in code.
+
+```yaml
+parameters:
+  bookmarks.max_stored:
+    type: number
+    default: 100
+    namespace: bookmarks   # optional organizational grouping
+    description: Maximum bookmarks per user
+```
+
+- The `"main"` namespace is the default and is omitted from config
+- When parameters are imported from the dashboard (via `npx @traffical/cli pull` or during `init`), they may include `namespace: <name>` — this is normal
+- Namespace is independent of dot-notation naming (e.g., `bookmarks.max_stored` can be in namespace `bookmarks`, but this is a convention, not enforced)
+- You do not need to specify a namespace when creating new parameters — they will use the default namespace
 
 ## Parameter Naming Conventions
 
