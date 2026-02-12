@@ -49,23 +49,43 @@ Traffical is **parameter-first**. You define parameters with defaults, and Traff
 | Updating algorithms/logic | Test impact before full rollout |
 | Anything affecting revenue | Always experiment first |
 
-## Getting Started in a Project
+## Recommended Workflow
+
+**Always use the Traffical CLI to manage parameters.** The CLI is the primary tool for setting up and syncing configuration. Do not skip it.
+
+1. **Initialize** — Run `npx @traffical/cli init` to set up the project (or check for an existing `.traffical/` directory)
+2. **Define parameters** — Add parameters and events to `.traffical/config.yaml`
+3. **Sync** — Run `npx @traffical/cli push` to sync parameters to the Traffical platform
+4. **Install SDK** — Add the appropriate SDK package to your project
+5. **Use in code** — Resolve parameters and track events using the SDK
+6. **Verify** — Run `npx @traffical/cli status` to confirm everything is in sync
+
+## The Traffical CLI
+
+The CLI (`@traffical/cli`) is how you initialize projects, define parameters, and keep local config in sync with the Traffical platform. You can run it via `npx` (no global install required):
+
+```bash
+npx @traffical/cli <command>
+```
+
+Or install globally for shorter commands:
+
+```bash
+npm install -g @traffical/cli
+traffical <command>
+```
 
 ### Check for existing setup
 
 Look for a `.traffical/` directory or `traffical.yaml` in the project root. If it exists, the project is already initialized — check the config for existing parameters before creating new ones.
 
-### Initialize with the CLI
+### Initialize a new project
 
 If no `.traffical/` directory exists, initialize Traffical:
 
 > **Important:** The `--api-key` flag requires a real API key. Never fabricate or guess API keys. If no key is available in environment variables (`TRAFFICAL_API_KEY`) or `~/.trafficalrc`, ask the user to provide one from https://app.traffical.io/settings/api-keys.
 
 ```bash
-# Install the CLI
-npm install -g @traffical/cli
-
-# Initialize (creates .traffical/ directory with config and templates)
 npx @traffical/cli init --api-key <api-key>
 ```
 
@@ -79,6 +99,32 @@ This creates:
 ```
 
 The CLI auto-detects your framework (React, Next.js, Svelte, SvelteKit, Vue, Nuxt, Node.js) and generates appropriate templates.
+
+### Managing parameters with the CLI
+
+After initialization, use the CLI to keep local config and the Traffical platform in sync:
+
+```bash
+# After adding or modifying parameters in config.yaml — push to platform
+npx @traffical/cli push
+
+# Before writing code — check what parameters exist and their sync status
+npx @traffical/cli status
+
+# Pull latest parameters from the platform into local config
+npx @traffical/cli pull
+
+# Bidirectional sync (local wins for conflicts)
+npx @traffical/cli sync
+
+# Import specific parameters from the dashboard (supports wildcards)
+npx @traffical/cli import "ui.*"
+
+# Validate config without pushing (dry run)
+npx @traffical/cli push --dry-run
+```
+
+**Always run `npx @traffical/cli push` after modifying `.traffical/config.yaml`.** This syncs your changes to the platform and prevents drift.
 
 ### SDK configuration values
 
@@ -281,31 +327,6 @@ events:
 | `rate` | Percentages or ratios |
 | `boolean` | Binary events (happened or not) |
 
-## CLI Commands
-
-```bash
-# Check sync status between local config and Traffical platform
-traffical status
-
-# Push local changes to Traffical (local wins)
-traffical push
-
-# Pull remote changes to local config (remote wins)
-traffical pull
-
-# Bidirectional sync (local wins for conflicts)
-traffical sync
-
-# Import dashboard parameters (supports wildcards)
-traffical import "ui.*"
-
-# Validate config without pushing (dry run)
-traffical push --dry-run
-
-# Add Traffical references to AI tool config files
-traffical integrate-ai-tools
-```
-
 ## Parameter Naming Conventions
 
 Use dot notation: `category.subcategory.name`
@@ -320,19 +341,19 @@ Use dot notation: `category.subcategory.name`
 
 ## Best Practices
 
-1. **Check existing parameters first** — Look in `.traffical/config.yaml` (or `traffical.yaml`) before creating new ones. Reuse existing parameters where possible.
+1. **Always use the CLI** — Run `npx @traffical/cli push` after editing config. Run `npx @traffical/cli status` to check sync state. Never skip the CLI — it is the bridge between your config files and the Traffical platform.
 
-2. **Always provide in-code defaults** — Defaults appear in two places: in `config.yaml` (the source of truth for the dashboard and experiment setup) and in your `getParams()`/`useTraffical()` calls (the offline fallback). In-code defaults are what the SDK returns when the config bundle hasn't loaded yet or is unreachable. The bundle's resolved value always takes precedence when available.
+2. **Check existing parameters first** — Look in `.traffical/config.yaml` (or `traffical.yaml`) before creating new ones. Run `npx @traffical/cli status` to see what's already defined. Reuse existing parameters where possible.
 
-3. **Track events at conversion points** — Call `track()` on purchases, signups, and other valuable actions. This enables adaptive optimization.
+3. **Define parameters in config, then push** — Add new parameters to `.traffical/config.yaml` and run `npx @traffical/cli push` to sync them. This keeps the config file as the source of truth and prevents drift with the dashboard.
 
-4. **Group related parameters** — Keep correlated params in one `useTraffical()` / `getTraffical()` / `getParams()` call for proper attribution.
+4. **Always provide in-code defaults** — Defaults appear in two places: in `config.yaml` (the source of truth for the dashboard and experiment setup) and in your `getParams()`/`useTraffical()` calls (the offline fallback). In-code defaults are what the SDK returns when the config bundle hasn't loaded yet or is unreachable. The bundle's resolved value always takes precedence when available.
 
-5. **Use meaningful param names** — Follow dot notation: `category.subcategory.name`. Be descriptive.
+5. **Track events at conversion points** — Call `track()` on purchases, signups, and other valuable actions. This enables adaptive optimization.
 
-6. **Define parameters in config** — Add new parameters to `.traffical/config.yaml` and run `traffical push` to sync them. This keeps the config file as the source of truth.
+6. **Group related parameters** — Keep correlated params in one `useTraffical()` / `getTraffical()` / `getParams()` call for proper attribution.
 
-7. **Use the CLI for changes** — Prefer `traffical push` / `traffical pull` / `traffical sync` over manual dashboard edits to avoid drift.
+7. **Use meaningful param names** — Follow dot notation: `category.subcategory.name`. Be descriptive.
 
 ## What You Don't Need to Know
 
