@@ -36,7 +36,8 @@ Traffical is **parameter-first**. You define parameters with defaults, and Traff
 
 1. **Parameters, Not Experiments** — You define parameters with defaults. Experiments, feature flags, and optimizations are policies that control parameter assignment. Your code doesn't need to know which.
 2. **Resolution Is Local** — The SDK fetches a config bundle once and caches it. Every resolution call is synchronous from cache — no network latency, no render flicker.
-3. **Track Events for Learning** — Call `track()` when valuable actions happen (purchase, signup, etc.). Traffical uses this data for adaptive optimization.
+3. **Decisions Are Tracked Automatically** — When you call `useTraffical()` or `decide()`, a decision event is automatically sent to Traffical (enabled by default via `trackDecisions: true`). This connects parameter resolution to conversion events for intent-to-treat analysis. No manual setup needed.
+4. **Track Events for Learning** — Call `track()` when valuable actions happen (purchase, signup, etc.). Traffical uses this data for adaptive optimization.
 
 ## When to Use Traffical
 
@@ -77,6 +78,10 @@ This creates:
 
 The CLI auto-detects your framework (React, Next.js, Svelte, SvelteKit, Vue, Nuxt, Node.js) and generates appropriate templates.
 
+### SDK configuration values
+
+After `traffical init`, the `.traffical/config.yaml` contains `project.id` and `project.orgId`. Use these values (along with an `env` like `"production"`) when initializing the SDK. Store the API key in environment variables (`TRAFFICAL_API_KEY`).
+
 ### Install an SDK
 
 | Package | Use case |
@@ -108,10 +113,13 @@ function App() {
   return (
     <TrafficalProvider
       config={{
+        orgId: "org_xxx",
         projectId: "proj_xxx",
+        env: "production",
         apiKey: "pk_live_your_public_key",
       }}
-      context={{ userId: currentUser.id }}
+      // Optional: provide unitKeyFn for logged-in users
+      // unitKeyFn: () => currentUser.id,
     >
       <MyApp />
     </TrafficalProvider>
@@ -153,7 +161,9 @@ function CheckoutButton() {
   import { setTrafficalContext } from "@traffical/svelte";
 
   setTrafficalContext({
+    orgId: "org_xxx",
     projectId: "proj_xxx",
+    env: "production",
     apiKey: "pk_live_your_public_key",
     context: { userId: data.user?.id ?? "anonymous" },
   });
@@ -190,7 +200,9 @@ function CheckoutButton() {
 import { createTrafficalClient } from "@traffical/node";
 
 const traffical = await createTrafficalClient({
+  orgId: "org_xxx",
   projectId: "proj_xxx",
+  env: "production",
   apiKey: "sk_live_your_api_key",
 });
 
@@ -203,12 +215,16 @@ const params = traffical.getParams({
   },
 });
 
-// Track events
-traffical.track("purchase", {
-  context: { userId: "user_789" },
-  value: 49.99,
-});
+// Track events (value goes in properties, unitKey in options)
+traffical.track("purchase", { value: 49.99 }, { unitKey: "user_789" });
 ```
+
+### track() API
+
+The `track()` signature differs between client-side and server-side SDKs:
+
+- **React/Svelte** (client-side): `track(event, properties?)` — The `decisionId` and `unitKey` are automatically bound from the provider context. Just call `track("purchase", { value: 49.99 })`.
+- **Node.js** (server-side): `track(event, properties?, options?)` — You must provide `unitKey` in the third argument: `traffical.track("purchase", { value: 49.99 }, { unitKey: userId })`. Optionally pass `decisionId` for explicit attribution.
 
 ## Config-as-Code
 
@@ -304,7 +320,7 @@ Use dot notation: `category.subcategory.name`
 
 1. **Check existing parameters first** — Look in `.traffical/config.yaml` (or `traffical.yaml`) before creating new ones. Reuse existing parameters where possible.
 
-2. **Always provide defaults** — Defaults are used when no experiment is running, during SSR, and as fallback values. Your app should always work with just the defaults.
+2. **Always provide in-code defaults** — Defaults appear in two places: in `config.yaml` (the source of truth for the dashboard and experiment setup) and in your `getParams()`/`useTraffical()` calls (the offline fallback). In-code defaults are what the SDK returns when the config bundle hasn't loaded yet or is unreachable. The bundle's resolved value always takes precedence when available.
 
 3. **Track events at conversion points** — Call `track()` on purchases, signups, and other valuable actions. This enables adaptive optimization.
 
