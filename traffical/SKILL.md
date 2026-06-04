@@ -56,19 +56,45 @@ The CLI (`@traffical/cli`) is the primary tool. It authenticates you, links the 
 **The fastest path for a fresh project:**
 
 ```bash
-# 1. Authenticate once (opens a browser; device flow). Creates ~/.config/traffical/auth.json
-npx @traffical/cli login
+# 1. Authenticate once (device flow). In an agent context, ALWAYS use
+#    --no-browser so the URL + code are printed for you to relay.
+npx @traffical/cli login --no-browser
 
-# 2. Initialize: links the repo to a project and scaffolds .traffical/
+# 2. Discover which org/project to use (skip if you already know the keys).
+#    Accounts with multiple orgs/projects MUST pass both --org and --project
+#    to init, or it will fail one disambiguation at a time.
+npx @traffical/cli org list --format json
+npx @traffical/cli project list --org <org-key> --format json
+
+# 3. Initialize: links the repo to a project and scaffolds .traffical/
 #    Always pass --framework and --yes in non-interactive / agent contexts.
-npx @traffical/cli init --framework react --yes
+npx @traffical/cli init --org <org-key> --project <project-key> --framework react --yes
 
-# 3. Install the SDK that matches the framework (see table below)
+# 4. Once the app itself exists, install the matching SDK (see table below)
 npm install @traffical/react
 
-# 4. Edit .traffical/config.yaml to define parameters + events, then sync
+# 5. Edit .traffical/config.yaml to define parameters + events, then sync
 npx @traffical/cli push
 ```
+
+> **Agents cannot complete login for you.** Device flow requires a human to
+> approve in *their own* browser — you cannot submit the device code on the
+> user's behalf, even if they paste it to you. Either tell the user to run
+> `! npx @traffical/cli login --no-browser` themselves, or run it in the
+> background, relay the URL + code, and wait for them to approve.
+
+> **`whoami` can be stale.** Plain `whoami` reflects the cached session, not a
+> live check, so it may report `authenticated: true` when the session has
+> actually ended. For a reliable gate, run **`whoami --verify`** (does a live
+> server check; exits `2` if the session is dead). Otherwise, just proceed —
+> the first authenticated command returning `auth_error` (exit `2`) is itself
+> the signal to re-run `login`.
+
+> **Install the SDK only once an app scaffold exists.** `init` works in an
+> empty directory (Traffical is often set up before or independently of the
+> app), but `npm install @traffical/<sdk>` and provider wiring only make sense
+> once there's a `package.json` and source to wire into. Skip steps 4–5 until
+> then.
 
 `init` orchestrates **login → link → scaffold** and creates:
 
@@ -101,9 +127,9 @@ The CLI version covered here is **0.9.x**. Commands fall into four groups.
 
 | Command | Purpose |
 |---------|---------|
-| `traffical login` | Browser device-flow auth. `--no-browser` prints URL/code; `--token <jwt>` seeds a session for CI/agents |
+| `traffical login` | Device-flow auth. **Agents: always pass `--no-browser`** to print the URL/code to relay (you can't open or approve the browser yourself). `--token <jwt>` seeds a session for CI/agents |
 | `traffical logout` | Remove the local session |
-| `traffical whoami` | Show the active identity and linked project |
+| `traffical whoami` | Show the active identity and linked project (cached session — may be stale). Add `--verify` for a live server check (exit `2` if the session is dead) |
 | `traffical link` / `unlink` | Link/unlink the repo to a project (`--org`, `--project`, `-y`, `--force`) |
 | `traffical org list` / `org use <key>` | List orgs / set the default org |
 | `traffical project list` / `project create <name>` / `project use <keyOrId>` | Manage and select projects |
@@ -111,7 +137,7 @@ The CLI version covered here is **0.9.x**. Commands fall into four groups.
 
 `init` flags: `--api-key <key>` (override bearer token), `--framework <name>` (`react`, `nextjs`, `svelte`, `sveltekit`, `node`), `--org`, `--project`, `-y/--yes`, `--force` (overwrite existing files), `--no-sdk-key` (skip SDK key provisioning).
 
-> **For AI agents:** Always pass `--framework` and `--yes` to `init` so it never blocks on an interactive prompt in a non-TTY environment.
+> **For AI agents:** Always pass `--framework` and `--yes` so `init` never blocks on a prompt in a non-TTY environment. In an account with multiple orgs or projects, also pass **both `--org` and `--project`** — otherwise `init` fails one disambiguation at a time (org first, then project), costing two extra round-trips. Discover the keys with `org list` / `project list` first.
 
 ### Config sync (config-as-code)
 
@@ -159,7 +185,7 @@ Global flags (all commands): `-p/--profile <name>` (legacy `~/.trafficalrc`), `-
 
 Traffical separates **human/CLI authentication** from **runtime SDK keys**.
 
-- **CLI / humans** authenticate with `traffical login` (OAuth device flow). The session is stored in `~/.config/traffical/auth.json` (mode `0600`) and auto-refreshes. This is what authorizes `push`/`pull`/`sync` and project management.
+- **CLI / humans** authenticate with `traffical login` (OAuth device flow). The session is stored in `~/.config/traffical/auth.json` (mode `0600`) and refreshes automatically while the refresh token is valid — but it can still end server-side (revoked, expired, ended elsewhere), in which case the next command returns `auth_error` (exit 2) and you must `login` again. This session authorizes `push`/`pull`/`sync` and project management.
 - **Runtime SDKs** use a **project-scoped SDK key** (`traffical_sk_...`, scopes `sdk:read` + `sdk:write`). `init` provisions this automatically and writes it to `.traffical/.env` as `TRAFFICAL_API_KEY`. It can only read config and send events, so it is safe to expose to the browser via your framework's public env var.
 
 **Environment variables the CLI honors:**
