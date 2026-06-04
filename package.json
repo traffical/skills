@@ -1,0 +1,9 @@
+{
+  "name": "@traffical/skills",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Agent Skills that teach AI coding agents how to use Traffical",
+  "scripts": {
+    "test": "node tests/check-skill.mjs"
+  }
+}

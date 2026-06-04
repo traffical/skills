@@ -1,207 +1,200 @@
 ---
 name: traffical
-description: Feature flags, A/B testing, and adaptive optimization with Traffical. Use when adding features, modifying UI, changing algorithms, or anything affecting conversions. Check this skill when implementing new functionality that could benefit from gradual rollout or experimentation.
+description: Feature flags, A/B testing, and adaptive optimization with Traffical. Use when adding features, modifying UI, changing algorithms, scaffolding a new project, or anything affecting conversions. Check this skill when implementing functionality that could benefit from gradual rollout or experimentation, and whenever you see a `.traffical/` directory.
 ---
 
 # Traffical
 
-Traffical is a parameter-first experimentation and optimization platform. It unifies feature flags, A/B testing, and contextual bandits into a single system. SDKs resolve parameters locally at the edge — no per-request API calls, sub-millisecond latency, works offline.
+Traffical is a parameter-first experimentation and optimization platform. It unifies feature flags, A/B testing, and contextual bandits into a single system. SDKs resolve parameters locally from a cached config bundle — no per-request API calls, sub-millisecond latency, works offline.
 
 ## Mental Model
 
-Traffical is **parameter-first**. You define parameters with defaults, and Traffical handles the rest.
+Traffical is **parameter-first**. You define typed parameters with defaults, and Traffical decides their values per user.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │  Your Code                                                          │
-│                                                                     │
-│  1. Define parameters with defaults                                 │
-│  2. Use the resolved values                                         │
-│  3. Track events on conversion                                      │
+│   1. Define parameters with defaults                                │
+│   2. Use the resolved values                                        │
+│   3. Track events on conversion                                     │
 └─────────────────────────────────────────────────────────────────────┘
                               ▲
                               │  (hidden from you)
                               ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │  Traffical                                                          │
-│                                                                     │
-│  • Layers & policies for mutual exclusivity                         │
-│  • Bucket assignment & deterministic hashing                        │
-│  • Thompson Sampling & contextual bandits                           │
-│  • Statistical analysis & optimization                              │
+│   • Layers & policies for mutual exclusivity                        │
+│   • Bucket assignment & deterministic hashing                       │
+│   • Thompson Sampling & contextual bandits                          │
+│   • Statistical analysis & optimization                             │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
 **Key insights:**
 
-1. **Parameters, Not Experiments** — You define parameters with defaults. Experiments, feature flags, and optimizations are policies that control parameter assignment. Your code doesn't need to know which.
-2. **Resolution Is Local** — The SDK fetches a config bundle once and caches it. Every resolution call is synchronous from cache — no network latency, no render flicker.
-3. **Decisions Are Tracked Automatically** — When you call `useTraffical()` or `decide()`, a decision event is automatically sent to Traffical (enabled by default via `trackDecisions: true`). This connects parameter resolution to conversion events for intent-to-treat analysis. No manual setup needed.
-4. **Track Events for Learning** — Call `track()` when valuable actions happen (purchase, signup, etc.). Traffical uses this data for adaptive optimization.
+1. **Parameters, not experiments** — You define parameters with defaults. Experiments, feature flags, and optimizations are *policies* that control parameter assignment. Your code doesn't need to know which is running.
+2. **Resolution is local** — The SDK fetches a config bundle once and caches it. Every resolution is synchronous from cache — no network latency, no render flicker.
+3. **Decisions are tracked automatically** — When you resolve parameters, a decision event is sent automatically (`trackDecisions: true` by default). This connects resolution to conversions for intent-to-treat analysis.
+4. **Track events for learning** — Call `track()` on valuable actions (purchase, signup). Traffical uses these as reward signals for adaptive optimization.
 
 ## When to Use Traffical
 
 | Scenario | Action |
 |----------|--------|
-| Adding a new feature | Wrap in feature flag for gradual rollout |
-| Changing existing UI | A/B test against current implementation |
+| Adding a new feature | Wrap in a feature flag for gradual rollout |
+| Changing existing UI | A/B test against the current implementation |
 | Modifying conversion paths | Experiment with success metrics |
 | Updating algorithms/logic | Test impact before full rollout |
 | Anything affecting revenue | Always experiment first |
 
-## Recommended Workflow
+---
 
-**Always use the Traffical CLI to manage parameters.** The CLI is the primary tool for setting up and syncing configuration. Do not skip it.
+## Getting Started From Zero
 
-1. **Initialize** — Run `npx @traffical/cli init --api-key <management-key> --framework <name> --yes` to set up the project non-interactively (or check for an existing `.traffical/` directory). The user must provide a Management Key or Full Access key from the dashboard. Always pass `--framework` and `--yes` to avoid interactive prompts.
-2. **Define parameters** — Add parameters and events to `.traffical/config.yaml`
-3. **Sync** — Run `npx @traffical/cli push` to sync parameters to the Traffical platform
-4. **Install SDK** — Add the appropriate SDK package to your project
-5. **Use in code** — Resolve parameters and track events using the SDK
-6. **Verify** — Run `npx @traffical/cli status` to confirm everything is in sync
+The CLI (`@traffical/cli`) is the primary tool. It authenticates you, links the repo to a project, scaffolds config, and provisions a runtime key. Run it via `npx @traffical/cli <command>` or install globally (`npm i -g @traffical/cli` → `traffical <command>`).
 
-## The Traffical CLI
-
-The CLI (`@traffical/cli`) is how you initialize projects, define parameters, and keep local config in sync with the Traffical platform. You can run it via `npx` (no global install required):
+**The fastest path for a fresh project:**
 
 ```bash
-npx @traffical/cli <command>
+# 1. Authenticate once (opens a browser; device flow). Creates ~/.config/traffical/auth.json
+npx @traffical/cli login
+
+# 2. Initialize: links the repo to a project and scaffolds .traffical/
+#    Always pass --framework and --yes in non-interactive / agent contexts.
+npx @traffical/cli init --framework react --yes
+
+# 3. Install the SDK that matches the framework (see table below)
+npm install @traffical/react
+
+# 4. Edit .traffical/config.yaml to define parameters + events, then sync
+npx @traffical/cli push
 ```
 
-Or install globally for shorter commands:
-
-```bash
-npm install -g @traffical/cli
-traffical <command>
-```
-
-### Check for existing setup
-
-Look for a `.traffical/` directory or `traffical.yaml` in the project root. If it exists, the project is already initialized — check the config for existing parameters before creating new ones.
-
-### Initialize a new project
-
-If no `.traffical/` directory exists, initialize Traffical:
-
-> **Important:** The `--api-key` flag requires a real Management Key or Full Access key. **Never fabricate or guess API keys.** If no key is available in environment variables (`TRAFFICAL_API_KEY`) or `~/.trafficalrc`, ask the user to provide one from https://app.traffical.io/settings/api-keys.
-
-```bash
-# Basic init (will auto-detect framework and prompt if needed):
-npx @traffical/cli init --api-key <management-key>
-
-# Fully non-interactive init (recommended for AI agents and CI/CD):
-npx @traffical/cli init --api-key <management-key> --framework react --yes
-```
-
-**Available flags for `init`:**
-
-| Flag | Description |
-|------|-------------|
-| `--api-key <key>` | Management or Full Access key (falls back to `TRAFFICAL_API_KEY` env var or `~/.trafficalrc`) |
-| `--framework <name>` | Skip framework detection. Values: `react`, `nextjs`, `svelte`, `sveltekit`, `vue`, `nuxt`, `node` |
-| `--project <id>` | Use a specific project (skips project selection prompt, useful with org-scoped keys) |
-| `-y, --yes` | Auto-accept all detected defaults — no interactive prompts |
-| `--no-sdk-key` | Skip automatic SDK key creation |
-
-> **For AI agents:** Always pass `--framework` and `--yes` to avoid interactive prompts that will hang in non-TTY environments.
-
-This creates:
+`init` orchestrates **login → link → scaffold** and creates:
 
 ```
 .traffical/
-├── config.yaml      # Parameter and event definitions (committed)
-├── .env             # TRAFFICAL_API_KEY=... (gitignored, auto-generated SDK key)
+├── project.yaml     # Repo → Traffical project link (committed)
+├── config.yaml      # Parameter, event (+ metric) definitions (committed)
+├── .env             # TRAFFICAL_API_KEY=traffical_sk_... (gitignored, auto-provisioned SDK key)
 ├── .gitignore       # Ensures .env is never committed
-├── AGENTS.md        # AI agent integration guide (project-specific)
-└── TEMPLATES.md     # Framework-specific code templates
+└── TEMPLATES.md     # Framework-specific code patterns (committed)
+
+AGENTS.md            # Project-specific quick reference at repo root (committed)
 ```
 
-The CLI auto-detects your framework (React, Next.js, Svelte, SvelteKit, Vue, Nuxt, Node.js) and generates appropriate templates. Existing synced parameters and events are imported into `config.yaml` automatically.
+> **Important:** Already-synced parameters and events are imported into `config.yaml` automatically during `init`. **Always check `.traffical/config.yaml` for existing parameters before creating new ones.**
 
-**After init**, add `TRAFFICAL_API_KEY` from `.traffical/.env` to your project's `.env` or hosting environment for runtime SDK use. The auto-generated key has `sdk:read` and `sdk:write` scopes — just enough for parameter resolution and event tracking.
+> **Never fabricate API keys.** `init` provisions the runtime key for you. If you ever need to authenticate non-interactively (CI), use `traffical login --token <jwt>` or set `TRAFFICAL_API_KEY` — don't invent a value.
 
-### Managing parameters with the CLI
+### For existing projects
 
-After initialization, use the CLI to keep local config and the Traffical platform in sync:
+If a `.traffical/` directory already exists, the project is initialized. Read `.traffical/project.yaml` (the link), `.traffical/config.yaml` (parameters/events), and `AGENTS.md`. Run `npx @traffical/cli status` to see sync state before changing anything.
+
+---
+
+## The Traffical CLI
+
+The CLI version covered here is **0.9.x**. Commands fall into four groups.
+
+### Authentication & onboarding
+
+| Command | Purpose |
+|---------|---------|
+| `traffical login` | Browser device-flow auth. `--no-browser` prints URL/code; `--token <jwt>` seeds a session for CI/agents |
+| `traffical logout` | Remove the local session |
+| `traffical whoami` | Show the active identity and linked project |
+| `traffical link` / `unlink` | Link/unlink the repo to a project (`--org`, `--project`, `-y`, `--force`) |
+| `traffical org list` / `org use <key>` | List orgs / set the default org |
+| `traffical project list` / `project create <name>` / `project use <keyOrId>` | Manage and select projects |
+| `traffical init` | One-shot setup (login → link → scaffold) |
+
+`init` flags: `--api-key <key>` (override bearer token), `--framework <name>` (`react`, `nextjs`, `svelte`, `sveltekit`, `node`), `--org`, `--project`, `-y/--yes`, `--force` (overwrite existing files), `--no-sdk-key` (skip SDK key provisioning).
+
+> **For AI agents:** Always pass `--framework` and `--yes` to `init` so it never blocks on an interactive prompt in a non-TTY environment.
+
+### Config sync (config-as-code)
 
 ```bash
-# After adding or modifying parameters in config.yaml — push to platform
-npx @traffical/cli push
+# Push local config.yaml (and metrics.yaml) to the platform
+npx @traffical/cli push                 # flags: -n/--dry-run, --prune, --metrics-file <path>
 
-# Before writing code — check what parameters exist and their sync status
+# Check drift between local config and the platform (exit code 10 if drift)
 npx @traffical/cli status
 
-# Pull latest parameters from the platform into local config
-npx @traffical/cli pull
+# Pull synced params/events into local config
+npx @traffical/cli pull                 # flags: --include-types, --types-output <path>
 
-# Bidirectional sync (local wins for conflicts)
-npx @traffical/cli sync
+# Bidirectional sync (local wins on conflict)
+npx @traffical/cli sync                 # flags: --all, -n/--dry-run, --prune
 
-# Import specific parameters from the dashboard (supports wildcards)
-npx @traffical/cli import "ui.*"
+# Import a dashboard-created parameter into config (wildcards supported)
+npx @traffical/cli import param "ui.*"
 
-# Validate config without pushing (dry run)
-npx @traffical/cli push --dry-run
+# Import metric definitions into .traffical/metrics.yaml
+npx @traffical/cli import metrics --all
 ```
 
-**Always run `npx @traffical/cli push` after modifying `.traffical/config.yaml`.** This syncs your changes to the platform and prevents drift.
+**Always run `npx @traffical/cli push` after editing `.traffical/config.yaml`** — this syncs your changes and prevents drift.
 
-## Authentication
-
-Traffical uses different API key types for different purposes:
-
-| Key Type | Prefix | Purpose | Scopes |
-|----------|--------|---------|--------|
-| **SDK Key** | `traffical_sk_*` | Runtime SDKs — fetch config, send events | `sdk:read`, `sdk:write` |
-| **Management Key** | `traffical_sk_*` | CLI, CI/CD — create/modify entities, push/pull/sync | `mgmt:read`, `mgmt:write` |
-| **Full Access Key** | `traffical_sk_*` | Administrative — all operations | `sdk:*`, `mgmt:*`, `admin` |
-
-### How init handles keys
-
-1. You provide a **Management Key** (or Full Access key) via `--api-key` or `~/.trafficalrc`
-2. The CLI authenticates and selects org/project
-3. The CLI **auto-creates a project-scoped SDK key** via the API and saves it to `.traffical/.env`
-4. The `.traffical/.gitignore` is created/updated to ensure `.env` is never committed
-
-This means:
-- The **Management Key** stays in `~/.trafficalrc` (for CLI operations like push/pull/sync)
-- The **SDK Key** goes into `.traffical/.env` (for runtime use in your app)
-- Only the least-privileged key (SDK) is used at runtime — no risk of leaking management access
-
-### SDK key location
-
-The SDK key auto-generated by `init` is stored in:
-
-```
-.traffical/.env
-# Contains: TRAFFICAL_API_KEY=traffical_sk_...
-```
-
-Copy this value to your project's `.env` or hosting environment variables for your SDK to use at runtime.
-
-### SDK configuration values
-
-After `traffical init`, the `.traffical/config.yaml` contains `project.id` and `project.orgId`. Use these values (along with an `env` like `"production"`) when initializing the SDK. The SDK key is in `.traffical/.env` as `TRAFFICAL_API_KEY`.
-
-### Install an SDK
-
-| Package | Use case |
-|---------|----------|
-| `@traffical/react` | React and Next.js apps |
-| `@traffical/svelte` | Svelte and SvelteKit apps |
-| `@traffical/node` | Server-side Node.js (Express, Fastify, etc.) |
-| `@traffical/js-client` | Any browser environment |
+### Type generation
 
 ```bash
-# Pick the one matching your framework
-npm install @traffical/react
-# or
-npm install @traffical/svelte
-# or
-npm install @traffical/node
+# Generate TypeScript types from your config (param keys, event names, value types)
+npx @traffical/cli generate-types       # flags: -o/--output <path>, -l/--language typescript
 ```
 
+Use the generated types to get autocomplete and compile-time safety on parameter keys and event names. `pull --include-types` regenerates them as part of a pull.
+
+### Global options & exit codes
+
+Global flags (all commands): `-p/--profile <name>` (legacy `~/.trafficalrc`), `-c/--config <path>`, `-b/--api-base <url>`, `-j/--format human|json`, `-q/--quiet`.
+
+> **For AI agents:** Use `--format json` to get machine-readable output you can parse, and rely on exit codes:
+> `0` success · `1` validation error · `2` auth error · `3` network/API error · `4` not linked (no `.traffical/project.yaml`) · `10` config drift · `11` experiment needs attention.
+
+---
+
+## Authentication & Keys
+
+Traffical separates **human/CLI authentication** from **runtime SDK keys**.
+
+- **CLI / humans** authenticate with `traffical login` (OAuth device flow). The session is stored in `~/.config/traffical/auth.json` (mode `0600`) and auto-refreshes. This is what authorizes `push`/`pull`/`sync` and project management.
+- **Runtime SDKs** use a **project-scoped SDK key** (`traffical_sk_...`, scopes `sdk:read` + `sdk:write`). `init` provisions this automatically and writes it to `.traffical/.env` as `TRAFFICAL_API_KEY`. It can only read config and send events, so it is safe to expose to the browser via your framework's public env var.
+
+**Environment variables the CLI honors:**
+
+| Variable | Purpose |
+|----------|---------|
+| `TRAFFICAL_API_KEY` | API key (CI path; also the runtime SDK key in `.traffical/.env`) |
+| `TRAFFICAL_API_TOKEN` | Pre-minted JWT for headless/agent CI runs |
+| `TRAFFICAL_API_BASE` | API base URL override (self-hosted) |
+
+> `~/.trafficalrc` profiles are **legacy/deprecated** and migrated automatically — use `traffical login` instead.
+
+**To run the SDK in your app:** copy `TRAFFICAL_API_KEY` from `.traffical/.env` into your app's environment (or a public-prefixed var for browser bundles, e.g. `VITE_TRAFFICAL_API_KEY`, `NEXT_PUBLIC_TRAFFICAL_API_KEY`). `project.id` and `project.orgId` live in `.traffical/project.yaml`.
+
+---
+
+## Install an SDK
+
+| Package / install | Use case |
+|-------------------|----------|
+| `@traffical/react` | React and Next.js apps |
+| `@traffical/svelte` | Svelte 5 and SvelteKit apps |
+| `@traffical/node` | Server-side Node.js (Express, Fastify, Next/SvelteKit server, batch jobs) |
+| `@traffical/js-client` | Any browser environment, framework-free |
+| `@traffical/react-native` | React Native (iOS/Android) |
+| `composer require traffical/sdk` | PHP 8.1+ (Laravel, Symfony, OpenFeature) |
+| SPM `github.com/traffical/ios-sdk` → `import Traffical` | Native iOS (Swift) |
+
+> The CLI scaffolds templates for JS frameworks (`react`, `nextjs`, `svelte`, `sveltekit`, `node`). **There is no `@traffical/vue` package yet** — do not import it. Vue/Nuxt projects can use `@traffical/js-client` directly in the browser and `@traffical/node` on the server.
+
+---
+
 ## SDK Usage
+
+All SDKs share the same model: configure once with `orgId`, `projectId`, `env`, `apiKey`; resolve parameters with in-code defaults; track events on conversion.
 
 ### React / Next.js
 
@@ -214,13 +207,14 @@ function App() {
   return (
     <TrafficalProvider
       config={{
-        orgId: "org_xxx",
-        projectId: "proj_xxx",
+        orgId: "org_xxx",                                  // from .traffical/project.yaml
+        projectId: "proj_xxx",                             // from .traffical/project.yaml
         env: "production",
-        apiKey: "pk_live_your_public_key",
+        apiKey: process.env.NEXT_PUBLIC_TRAFFICAL_API_KEY!, // SDK key, browser-safe
+        // Optional: bind a stable identity for logged-in users
+        // unitKeyFn: () => currentUser.id,
+        // contextFn: () => ({ plan: currentUser.plan }),
       }}
-      // Optional: provide unitKeyFn for logged-in users
-      // unitKeyFn: () => currentUser.id,
     >
       <MyApp />
     </TrafficalProvider>
@@ -252,34 +246,43 @@ function CheckoutButton() {
 }
 ```
 
+`useTraffical()` returns `{ params, decision, ready, error, trackExposure, track, flushEvents }`. Most code only needs `params` and `track`; the rest support SSR, loading states, and manual exposure (see **Tracking Modes**).
+
 ### Svelte / SvelteKit
 
-**Layout setup:**
+`@traffical/svelte` uses **Svelte 5 runes** (not stores). Read parameters as `params["key"]` — there is no `$params`.
+
+**Layout setup** (`src/routes/+layout.svelte`):
 
 ```svelte
-<!-- src/routes/+layout.svelte -->
-<script>
-  import { setTrafficalContext } from "@traffical/svelte";
+<script lang="ts">
+  import { TrafficalProvider } from "@traffical/svelte";
 
-  setTrafficalContext({
+  let { data, children } = $props();
+</script>
+
+<TrafficalProvider
+  config={{
     orgId: "org_xxx",
     projectId: "proj_xxx",
     env: "production",
-    apiKey: "pk_live_your_public_key",
-    context: { userId: data.user?.id ?? "anonymous" },
-  });
-</script>
-
-<slot />
+    apiKey: import.meta.env.VITE_TRAFFICAL_API_KEY,
+    initialBundle: data?.traffical?.bundle,   // optional: SSR hydration
+  }}
+>
+  {@render children()}
+</TrafficalProvider>
 ```
 
-**Use in components** (`params` and `track` are Svelte stores — use `$` prefix):
+> Programmatic alternative to the component: call `initTraffical(config)` in your root, then `getTrafficalContext()` where you need the client. (`setTrafficalContext`/`getTraffical` do **not** exist.)
+
+**Use in components:**
 
 ```svelte
-<script>
-  import { getTraffical } from "@traffical/svelte";
+<script lang="ts">
+  import { useTraffical } from "@traffical/svelte";
 
-  const { params, track } = getTraffical({
+  const { params, track } = useTraffical({
     defaults: {
       "checkout.button.color": "#1E6EFB",
       "checkout.button.label": "Buy now",
@@ -288,23 +291,23 @@ function CheckoutButton() {
 </script>
 
 <button
-  style="background-color: {$params['checkout.button.color']}"
-  on:click={() => $track("checkout_click")}
+  style="background-color: {params['checkout.button.color']}"
+  onclick={() => track("checkout_click")}
 >
-  {$params["checkout.button.label"]}
+  {params["checkout.button.label"]}
 </button>
 ```
 
-### Node.js (Server-side)
+### Node.js (server-side)
 
 ```typescript
 import { createTrafficalClient } from "@traffical/node";
 
 const traffical = await createTrafficalClient({
-  orgId: "org_xxx",        // from .traffical/config.yaml
-  projectId: "proj_xxx",   // from .traffical/config.yaml
+  orgId: "org_xxx",                       // from .traffical/project.yaml
+  projectId: "proj_xxx",                  // from .traffical/project.yaml
   env: "production",
-  apiKey: process.env.TRAFFICAL_API_KEY!,  // from .traffical/.env
+  apiKey: process.env.TRAFFICAL_API_KEY!, // from .traffical/.env
 });
 
 // Resolve parameters (synchronous, from cached bundle)
@@ -316,53 +319,90 @@ const params = traffical.getParams({
   },
 });
 
-// Track events (value goes in properties, unitKey in options)
+// Track events — on the server you must supply unitKey in the 3rd argument
 traffical.track("purchase", { value: 49.99 }, { unitKey: "user_789" });
 ```
 
-### Node.js (CLI / Scripts)
+For CLI tools / batch jobs without a user, pass a machine or job identifier as `unitKey`.
 
-For non-web contexts like CLI tools, batch jobs, or scripts, you can use `@traffical/node` without a web server. Use a machine or job identifier instead of a user ID:
+### Other languages (brief)
 
-```typescript
-import { createTrafficalClient } from "@traffical/node";
+**Browser, framework-free** (`@traffical/js-client`):
 
-const traffical = await createTrafficalClient({
-  orgId: "org_xxx",        // from .traffical/config.yaml
-  projectId: "proj_xxx",   // from .traffical/config.yaml
-  env: "production",
-  apiKey: process.env.TRAFFICAL_API_KEY!,
-});
+```ts
+import { createTrafficalClient } from "@traffical/js-client";
 
-const params = traffical.getParams({
-  context: { unitKey: "batch-job" },
-  defaults: {
-    "feature.new_algorithm": false,
-    "processing.batch_size": 100,
-  },
-});
-
-if (params["feature.new_algorithm"]) {
-  // Use new algorithm
-}
+const traffical = await createTrafficalClient({ orgId, projectId, env, apiKey });
+const params = traffical.getParams({ defaults: { "ui.cta.text": "Buy now" } });
+traffical.track("checkout_click");
 ```
 
-### track() API
+**iOS (Swift, SPM):**
 
-The `track()` signature differs between client-side and server-side SDKs:
+```swift
+import Traffical
 
-- **React/Svelte** (client-side): `track(event, properties?)` — The `decisionId` and `unitKey` are automatically bound from the provider context. Just call `track("purchase", { value: 49.99 })`.
-- **Node.js** (server-side): `track(event, properties?, options?)` — You must provide `unitKey` in the third argument: `traffical.track("purchase", { value: 49.99 }, { unitKey: userId })`. Optionally pass `decisionId` for explicit attribution.
+let traffical = TrafficalClient(options: .init(
+  orgId: "org_xxx", projectId: "proj_xxx", env: "production", apiKey: "traffical_sk_..."))
+try await traffical.initialize()
+
+let color = traffical.string("checkout.button.color", default: "#1E6EFB")
+traffical.track("purchase", properties: ["itemId": "abc"], value: 49.99)  // value is a labeled arg
+```
+
+**PHP (`traffical/sdk`):**
+
+```php
+use Traffical\Client;
+use Traffical\ClientOptions;
+
+$client = new Client(new ClientOptions(
+  orgId: 'org_xxx', projectId: 'proj_xxx', env: 'production', apiKey: getenv('TRAFFICAL_API_KEY')));
+
+$params = $client->getParams(
+  context: ['userId' => 'user_789'],
+  defaults: ['checkout.button.color' => '#1E6EFB']);
+
+$decision = $client->decide(context: ['userId' => 'user_789'], defaults: [...]);
+$client->track('purchase', ['value' => 49.99], $decision->decisionId);  // decisionId is the 3rd positional arg
+```
+
+### track() signature, by surface
+
+The reward/track call differs slightly across SDKs — get the argument order right:
+
+- **React / Svelte hooks:** `track(event, properties?)` — `decisionId` and `unitKey` are auto-bound from the provider/decision.
+- **Node / js-client:** `track(event, properties?, { decisionId?, unitKey? })` — supply `unitKey` server-side; the optimization `value` goes in `properties.value`.
+- **iOS:** `track(event, properties?, value?, decisionId?)` — `value` is its own labeled argument.
+- **PHP:** `track(event, properties?, decisionId?)` — `decisionId` is the 3rd positional argument.
+
+## Tracking Modes
+
+The `useTraffical()` hook (React/Svelte) supports three modes via `tracking`:
+
+| Mode | Decision event | Exposure event | Use case |
+|------|----------------|----------------|----------|
+| `"full"` (default) | auto | auto | UI actually shown to users |
+| `"decision"` | auto | manual (`trackExposure()`) | Below-the-fold / lazy-loaded content |
+| `"none"` | — | — | SSR, internal logic, tests |
+
+```tsx
+// Below-the-fold: count the exposure only when it becomes visible
+const { params, trackExposure } = useTraffical({
+  defaults: { "feature.new_checkout": false },
+  tracking: "decision",
+});
+// later: trackExposure();
+```
+
+---
 
 ## Config-as-Code
 
-Parameters and events are defined in `.traffical/config.yaml` (or `traffical.yaml`). This file is the source of truth — version-control it alongside your code.
+Parameters, events, and metrics are defined in `.traffical/config.yaml` (parameters + events) and `.traffical/metrics.yaml` (metrics). These are the source of truth — version-control them. The repo→project link lives separately in `.traffical/project.yaml` (do not put it in `config.yaml`).
 
 ```yaml
 version: "1.0"
-project:
-  id: proj_xxx
-  orgId: org_xxx
 
 parameters:
   checkout.button.color:
@@ -370,24 +410,38 @@ parameters:
     default: "#1E6EFB"
     description: Primary CTA button color
 
-  checkout.show_trust_badges:
-    type: boolean
-    default: false
-
   pricing.discount_pct:
     type: number
     default: 0
+    constraints:        # optional validation
+      min: 0
+      max: 100
+
+# Optional: group parameters under a namespace (organizational only)
+namespaces:
+  checkout:
+    description: Checkout flow
+    parameters:
+      show_trust_badges:        # full key: checkout.show_trust_badges
+        type: boolean
+        default: false
 
 events:
   purchase:
     valueType: currency
     unit: USD
     description: User completes a purchase
+    properties:               # optional event schema
+      order_id:
+        type: string
+        required: true
 
   add_to_cart:
     valueType: count
-    description: User adds item to cart
+    description: User adds an item to cart
 ```
+
+After editing, run `npx @traffical/cli push`.
 
 ### Parameter types
 
@@ -398,65 +452,36 @@ events:
 | `boolean` | Feature flags, simple toggles |
 | `json` | Structured config (multiple related settings) |
 
+Optional `constraints`: `min`, `max` (numbers), `pattern` (regex for strings), `allowedValues` (enum).
+
 ### Event value types
 
-| Value Type | Use case |
+| Value type | Use case |
 |------------|----------|
-| `currency` | Monetary values (revenue, order value) |
+| `currency` | Monetary values (revenue, order value) — pair with `unit` |
 | `count` | Numeric counts (clicks, items, views) |
 | `rate` | Percentages or ratios |
 | `boolean` | Binary events (happened or not) |
 
-### Adding events to config.yaml
+Events fired via `track()` at runtime appear in the dashboard even without a config definition, but defining them gives you descriptions, value types, optional property schemas, and keeps config as the source of truth.
 
-Define events in the `events:` block of `.traffical/config.yaml`:
+### Metrics
 
-```yaml
-events:
-  purchase:
-    valueType: currency
-    unit: USD
-    description: User completes a purchase
+`metrics.yaml` defines fact sources and metrics (`conversion_rate`, `sum`, `count`, `ratio`, `funnel`, `percentile`) used to evaluate experiments. Bring existing definitions local with `traffical import metrics --all`, edit, then `traffical push`.
 
-  signup:
-    valueType: boolean
-    description: User creates an account
-
-  page_view:
-    valueType: count
-    description: User views a page
-```
-
-Each event has:
-- **`valueType`** (required): `currency`, `count`, `rate`, or `boolean`
-- **`unit`** (optional): unit label for currency events (e.g., `USD`, `EUR`)
-- **`description`** (optional but recommended): human-readable explanation
-
-After adding events, run `npx @traffical/cli push` to sync them to the platform.
-
-Events discovered at runtime (via `track()` calls) will appear in the dashboard even without config definitions, but defining them in config gives you descriptions, value types, and keeps the config file as the source of truth.
+> **Boundary:** the CLI **defines** metrics as config — it does **not** query metric *results* or experiment outcomes. Those live in the dashboard and the SDK API. Don't invent a `traffical metrics show`-style command.
 
 ### Namespaces
 
-Namespaces are optional organizational groupings for parameters. They help organize parameters in the dashboard but do not affect how you use them in code.
+Namespaces are optional organizational groupings in the dashboard — they don't affect how you use parameters in code.
 
-```yaml
-parameters:
-  bookmarks.max_stored:
-    type: number
-    default: 100
-    namespace: bookmarks   # optional organizational grouping
-    description: Maximum bookmarks per user
-```
-
-- The `"main"` namespace is the default and is omitted from config
-- When parameters are imported from the dashboard (via `npx @traffical/cli pull` or during `init`), they may include `namespace: <name>` — this is normal
-- Namespace is independent of dot-notation naming (e.g., `bookmarks.max_stored` can be in namespace `bookmarks`, but this is a convention, not enforced)
-- You do not need to specify a namespace when creating new parameters — they will use the default namespace
+- The `"main"` namespace is the default and is omitted from config.
+- `pull`/`init` write parameters grouped under `namespaces:`; both that grouped form and a flat `namespace:` field on each parameter are accepted on read.
+- Namespace is independent of dot-notation naming — `checkout.button.color` can sit in any namespace.
 
 ## Parameter Naming Conventions
 
-Use dot notation: `category.subcategory.name`
+Use dot notation: `category.subcategory.name`.
 
 | Category | Examples | Use case |
 |----------|----------|----------|
@@ -468,29 +493,23 @@ Use dot notation: `category.subcategory.name`
 
 ## Best Practices
 
-1. **Always use the CLI** — Run `npx @traffical/cli push` after editing config. Run `npx @traffical/cli status` to check sync state. Never skip the CLI — it is the bridge between your config files and the Traffical platform.
+1. **Always use the CLI.** Run `npx @traffical/cli push` after editing config, and `npx @traffical/cli status` to check sync state. The CLI is the bridge between your config files and the platform.
+2. **Check existing parameters first.** Read `.traffical/config.yaml` and run `status` before creating new parameters. Reuse where possible.
+3. **Define parameters in config, then push.** Keep `config.yaml` the source of truth to prevent drift.
+4. **Always provide in-code defaults.** Defaults live in two places: `config.yaml` (source of truth for the dashboard/experiments) and your `getParams()`/`useTraffical()` calls (offline fallback used before the bundle loads or if it's unreachable). The bundle's resolved value wins when available.
+5. **Track events at conversion points.** Call `track()` on purchases, signups, and other valuable actions — this drives adaptive optimization.
+6. **Group related parameters.** Keep correlated params in one `useTraffical()`/`getParams()` call for proper attribution.
+7. **Generate types.** Run `generate-types` (or `pull --include-types`) for autocomplete and compile-time safety on keys and event names.
 
-2. **Check existing parameters first** — Look in `.traffical/config.yaml` (or `traffical.yaml`) before creating new ones. Run `npx @traffical/cli status` to see what's already defined. Reuse existing parameters where possible.
+## What You Don't Need to Know (handled automatically)
 
-3. **Define parameters in config, then push** — Add new parameters to `.traffical/config.yaml` and run `npx @traffical/cli push` to sync them. This keeps the config file as the source of truth and prevents drift with the dashboard.
+- **Layers, policies, allocations** — Experiment infrastructure is created and managed in the dashboard, not the CLI.
+- **Bucket assignment and hashing** — Deterministic user assignment happens automatically.
+- **A/B test vs. optimization** — Your code is identical either way.
+- **Statistical significance** — Traffical analyzes results in the background.
+- **Decision deduplication** — Repeated resolution calls are handled efficiently.
 
-4. **Always provide in-code defaults** — Defaults appear in two places: in `config.yaml` (the source of truth for the dashboard and experiment setup) and in your `getParams()`/`useTraffical()` calls (the offline fallback). In-code defaults are what the SDK returns when the config bundle hasn't loaded yet or is unreachable. The bundle's resolved value always takes precedence when available.
-
-5. **Track events at conversion points** — Call `track()` on purchases, signups, and other valuable actions. This enables adaptive optimization.
-
-6. **Group related parameters** — Keep correlated params in one `useTraffical()` / `getTraffical()` / `getParams()` call for proper attribution.
-
-7. **Use meaningful param names** — Follow dot notation: `category.subcategory.name`. Be descriptive.
-
-## What You Don't Need to Know
-
-These are internal concepts handled by Traffical automatically:
-
-- **Layers, policies, allocations** — Experiment infrastructure is managed in the dashboard
-- **Bucket assignment and hashing** — Deterministic user assignment happens automatically
-- **Whether an A/B test vs. optimization is running** — Your code is the same either way
-- **Statistical significance calculations** — Traffical handles analysis in the background
-- **Decision deduplication** — Multiple resolution calls are handled efficiently
+> **Not in the CLI yet:** creating or editing policies, layers, and experiments. That is dashboard-only today (an MCP server / CLI authoring may come later). The CLI's job is config-as-code (parameters, events, metrics) + scaffolding + codegen.
 
 **Just parametrize your app, track conversions, and let Traffical handle the rest.**
 
@@ -498,10 +517,8 @@ These are internal concepts handled by Traffical automatically:
 
 - **Quickstart**: https://docs.traffical.io/quickstart
 - **How It Works**: https://docs.traffical.io/how-it-works
-- **Parameters**: https://docs.traffical.io/concepts/parameters
-- **React SDK**: https://docs.traffical.io/sdks/react
-- **Svelte SDK**: https://docs.traffical.io/sdks/svelte
-- **Node.js SDK**: https://docs.traffical.io/sdks/node
+- **Concepts** (parameters, layers, policies, events & metrics): https://docs.traffical.io/concepts/parameters
+- **SDKs**: https://docs.traffical.io/sdks/overview — React, Svelte, Node, PHP, JavaScript, React Native
 - **CLI**: https://docs.traffical.io/tools/cli
-- **API Overview**: https://docs.traffical.io/api/overview
+- **API**: https://docs.traffical.io/api/overview
 - **Dashboard**: https://app.traffical.io

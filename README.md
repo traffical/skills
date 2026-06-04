@@ -33,7 +33,22 @@ npx skills add traffical/skills --list
 
 | Skill | Description |
 |-------|-------------|
-| **traffical** | Feature flags, A/B testing, and experimentation with Traffical. Covers all SDKs (React, Svelte, Node.js), config-as-code, CLI, and best practices. |
+| **traffical** | Feature flags, A/B testing, and experimentation with Traffical. Covers the CLI (login, init, sync, codegen, metrics), config-as-code, all SDKs (React, Svelte, Node, JS, React Native, iOS, PHP), and best practices. |
+
+## Development
+
+Skills are validated by a zero-dependency static checker that catches factual
+drift — nonexistent packages, wrong SDK exports, stale CLI commands — by
+checking the fenced code in each `SKILL.md` against known ground truth:
+
+```bash
+npm test                          # check every */SKILL.md
+CHECK_LINKS=1 npm test            # also HTTP-check documentation links
+```
+
+Ground truth (real packages, exports, CLI commands) lives at the top of
+[`tests/check-skill.mjs`](tests/check-skill.mjs); update it when the SDKs or CLI
+change. Runs automatically in CI on every PR.
 
 ## Learn More
 
