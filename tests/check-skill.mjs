@@ -85,10 +85,35 @@ const DENYLIST = [
   { re: /\bgetTraffical(?!Context)\b/, langs: ["svelte"], msg: "getTraffical() is not a Svelte export — use useTraffical() (or getTrafficalContext())" },
   { re: /\$params\b/, langs: ["svelte"], msg: "@traffical/svelte uses Svelte 5 runes — read params[\"key\"], not $params" },
   { re: /\bpk_live_/, msg: "pk_live_ keys are not the Traffical model — use the traffical_sk_ SDK key from .traffical/.env" },
+  { re: /["'`]pk_[a-zA-Z0-9]/, msg: "no pk_ public-key — the only SDK key format is traffical_sk_ (browser-safe; verified in control-plane api-keys.ts)" },
+  { re: /["'`](?<!traffical_)sk_[a-zA-Z0-9]/, msg: "no bare sk_ server-key — the only SDK key format is traffical_sk_" },
 ];
+
+// ── Ground truth generated from the real SDK (tests/sync-ground-truth.mjs). ──
+// Optional & committed: AUGMENTS the hand-maintained sets above so the checker
+// tracks what the SDK actually exports/accepts. It only EXPANDS allowlists —
+// never removes — so regenerating is always safe. Absent → hand-maintained only.
+let CONFIG_OPTIONS = null;
+try {
+  const gt = JSON.parse(readFileSync(join(REPO_ROOT, "tests", "ground-truth.json"), "utf-8"));
+  for (const p of gt.packages || []) REAL_PACKAGES.add(p);
+  for (const [pkg, names] of Object.entries(gt.exports || {})) {
+    KNOWN_EXPORTS[pkg] = new Set([...(KNOWN_EXPORTS[pkg] || []), ...names]);
+  }
+  if (Array.isArray(gt.configOptions) && gt.configOptions.length) CONFIG_OPTIONS = new Set(gt.configOptions);
+} catch { /* ground-truth.json is optional */ }
 
 // Languages whose fenced blocks contain JS-ish imports.
 const JS_LANGS = new Set(["ts", "tsx", "typescript", "js", "jsx", "svelte"]);
+
+// Openers of an SDK options/config object literal. The object's opening brace is
+// the last `{` of the matched text (handles JSX `config={{`).
+const CONFIG_OPENERS = [
+  /\bcreateTrafficalClient(?:Sync)?\s*\(\s*\{/g,
+  /\bnew\s+ClientOptions\s*\(\s*\{/g,
+  /\bconfig\s*=\s*\{\{/g,
+  /\bconfig\s*:\s*\{/g,
+];
 
 // ──────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -157,6 +182,7 @@ function checkFences(file, blocks) {
     }
 
     if (JS_LANGS.has(b.lang)) checkJsImports(file, b);
+    if (JS_LANGS.has(b.lang)) checkConfigOptions(file, b);
     if (b.lang === "bash" || b.lang === "sh" || b.lang === "shell") checkShell(file, b);
   }
 }
@@ -183,6 +209,44 @@ function checkJsImports(file, b) {
         continue;
       }
       if (!known.has(name)) add("error", file, line, `"${name}" is not exported by ${pkg}`);
+    }
+  }
+}
+
+/** Top-level (depth-1) `key:` identifiers of the object literal opening at `start`. */
+function topLevelKeys(content, start) {
+  const keys = [];
+  let depth = 0, expectKey = false;
+  for (let i = start; i < content.length; i++) {
+    const c = content[i];
+    if (c === "{") { depth++; if (depth === 1) expectKey = true; continue; }
+    if (c === "}") { depth--; if (depth === 0) break; continue; }
+    if (depth !== 1) continue;
+    if (c === ",") { expectKey = true; continue; }
+    if (expectKey && !/\s/.test(c)) {
+      const m = content.slice(i).match(/^([A-Za-z_]\w*)\s*:/);
+      if (m) { keys.push({ name: m[1], idx: i }); i += m[0].length - 1; }
+      expectKey = false; // spread/string-key/value → stop until next comma
+    }
+  }
+  return keys;
+}
+
+/** Warn on object keys passed to an SDK client/provider config that the SDK
+ *  doesn't accept — the class of drift that shipped unitKeyFn in the wrong spot. */
+function checkConfigOptions(file, b) {
+  if (!CONFIG_OPTIONS) return;
+  for (const re of CONFIG_OPENERS) {
+    re.lastIndex = 0;
+    let m;
+    while ((m = re.exec(b.content))) {
+      const objStart = m.index + m[0].lastIndexOf("{");
+      for (const { name, idx } of topLevelKeys(b.content, objStart)) {
+        if (!CONFIG_OPTIONS.has(name)) {
+          add("warn", file, b.startLine + lineAt(b.content, idx) - 1,
+            `"${name}" is not a known SDK config option — verify against the SDK (tests/ground-truth.json)`);
+        }
+      }
     }
   }
 }

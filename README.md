@@ -46,9 +46,26 @@ npm test                          # check every */SKILL.md
 CHECK_LINKS=1 npm test            # also HTTP-check documentation links
 ```
 
-Ground truth (real packages, exports, CLI commands) lives at the top of
-[`tests/check-skill.mjs`](tests/check-skill.mjs); update it when the SDKs or CLI
-change. Runs automatically in CI on every PR.
+Ground truth (real packages, exports, CLI commands) is split in two:
+
+- **Hand-maintained** fallbacks live at the top of [`tests/check-skill.mjs`](tests/check-skill.mjs).
+- **Generated** from the real SDK into [`tests/ground-truth.json`](tests/ground-truth.json)
+  by [`tests/sync-ground-truth.mjs`](tests/sync-ground-truth.mjs) — it imports the
+  installed `@traffical/*` packages (resolving `export *`), reads the config-option
+  field names from their `.d.ts`, and the SDK key prefix from the control plane. The
+  checker merges this in (it only **expands** the allowlists), and adds an SDK key-format
+  rule (`traffical_sk_` only — no `pk_`/`sk_`) plus a config-option check that warns on
+  options the SDK doesn't accept. The published docs have drifted from the SDK more than
+  once, so the SDK is the source of truth.
+
+```bash
+# Regenerate the manifest where the SDK / a demo's node_modules is available:
+node tests/sync-ground-truth.mjs                      # auto-discovers the demos
+node tests/sync-ground-truth.mjs /path/to/app-with-traffical-installed
+```
+
+`ground-truth.json` is committed so `npm test` runs offline in CI (no SDK checkout
+needed); regenerate and commit it when the SDK changes. Runs automatically in CI on every PR.
 
 ## Learn More
 
