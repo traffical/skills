@@ -429,6 +429,16 @@ Events are the reward signal that makes experiments and optimization work, so *w
 - **Match existing analytics.** If the codebase already fires an analytics call at the conversion point, add `track()` right alongside it — reuse the proven trigger point rather than inventing a new one.
 - **Define, then push.** Add the event to `config.yaml` and `push` so its schema and types exist, even though a runtime `track()` of an undefined event still lands.
 
+## Production Patterns
+
+These show up in nearly every real Traffical integration — reach for them when relevant. Full code is in **`references/sdk-usage.md`**.
+
+- **Flicker-free first paint.** Until the bundle loads, the SDK serves your in-code defaults, which can flash before resolved values arrive. Hand it a bundle up front via `localConfig` (React/js-client/Node) or `initialBundle` (Svelte) — fetched server-side for SSR (`fetchBundle` / `loadTrafficalBundle`) or at build time for SPAs/mobile (`GET /v1/config/<projectId>?env=<env>`). It still refreshes in the background.
+- **Identity on login.** Browser and React Native SDKs bucket anonymous users by an auto-generated stable id. On login, call `client.identify(user.id)` (via `useTrafficalClient()`) so they're bucketed by your real id — this re-buckets the session, which is expected.
+- **Decoupled attribution.** When the conversion happens away from where you resolved (backend resolves → frontend converts; email/batch; switchback), capture a `decisionId` from `decide()` and pass it to `track(event, props, { decisionId, unitKey })`. In-component hook tracking threads it for you.
+- **Flush before you leave.** On a path that navigates or unmounts right after a conversion (checkout → thank-you), `await flushEvents()` before navigating so batched events aren't dropped.
+- **React Native.** Use `TrafficalRNProvider`; mobile defaults to `evaluationMode: "server"` — bake a `localConfig` bundle (`"bundle"` mode) for offline / first-launch experiments.
+
 ## Auditing a Codebase for Traffical
 
 When asked to audit, find what to "move into Traffical," or migrate flags, **don't change application code unless asked** — produce a prioritized report (write it to a file like `TRAFFICAL_AUDIT.md`).

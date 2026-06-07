@@ -132,6 +132,108 @@ The reward/track call differs slightly across SDKs — get the argument order ri
 - **iOS:** `track(event, properties?, value?, decisionId?)` — `value` is its own labeled argument.
 - **PHP:** `track(event, properties?, decisionId?)` — `decisionId` is the 3rd positional argument.
 
+## React Native (`@traffical/react-native`)
+
+Same model as React, with a mobile-specific provider. The unit key persists in
+AsyncStorage; mobile defaults to `evaluationMode: "server"` (a network resolve per
+session) — set `"bundle"` with a baked `localConfig` for offline / first-launch experiments.
+
+```tsx
+import { TrafficalRNProvider, useTraffical } from "@traffical/react-native";
+
+function App() {
+  return (
+    <TrafficalRNProvider
+      config={{
+        orgId: "org_xxx",
+        projectId: "proj_xxx",
+        env: "production",
+        apiKey: process.env.EXPO_PUBLIC_TRAFFICAL_API_KEY,  // traffical_sk_ — app-safe
+        unitKeyFn: () => userId,                            // e.g. from AsyncStorage
+        // evaluationMode: "bundle",
+        // localConfig: require("./traffical-bundle.json"), // baked at build for cold start
+      }}
+      loadingComponent={<Splash />}
+    >
+      <RootNavigator />
+    </TrafficalRNProvider>
+  );
+}
+```
+
+In components, `useTraffical({ defaults })` and `track()` work exactly as on web.
+On a screen that navigates right after a conversion (e.g. checkout), `await flushEvents()`
+before navigating so batched events aren't dropped when it unmounts.
+
+## Decoupled tracking with `decide()` + `decisionId`
+
+When resolution and conversion happen in different places — backend resolves, frontend
+converts; email/batch sends; switchback windows — capture a `decisionId` from `decide()`
+and pass it to `track()` so the conversion attributes to the right decision:
+
+```typescript
+// Resolve once and keep the decision id.
+const decision = traffical.decide({
+  context: { userId: "user_789" },
+  defaults: { "search.ranking_algo": "bm25" },
+});
+const algo = decision.assignments["search.ranking_algo"];
+
+// Later / elsewhere — attribute the conversion explicitly.
+traffical.track("purchase", { value: 49.99 }, { decisionId: decision.decisionId, unitKey: "user_789" });
+```
+
+In-component hook tracking (`track` from `useTraffical()`) threads the `decisionId` for you —
+you only need this for cross-boundary attribution.
+
+## Flicker-free first paint (build-time / SSR bundle)
+
+Until the bundle loads, the SDK serves your in-code defaults — which can flash before the
+resolved values arrive. Hand the SDK a bundle up front so the first render is already correct:
+
+- **SSR:** fetch on the server (`loadTrafficalBundle` from `@traffical/svelte/sveltekit`, or
+  `fetchBundle` from `@traffical/react/server`) and pass it through as `localConfig` /
+  `initialBundle` (see the SSR sections above).
+- **SPA / mobile (build-time):** fetch the bundle in a prebuild step and import it as `localConfig`:
+
+```bash
+# prebuild step — write the bundle to a file the app imports as localConfig
+curl -s -H "Authorization: Bearer $TRAFFICAL_API_KEY" \
+  "https://sdk.traffical.io/v1/config/$PROJECT_ID?env=$ENV" > src/traffical-bundle.json
+```
+
+Either way the SDK keeps refreshing in the background, so the embedded bundle only removes the
+initial flash — dashboard changes still land within the refresh interval.
+
+## `identify()` and anonymous users
+
+Before login, the browser and React Native SDKs bucket the user by an auto-generated stable id.
+On login, switch to your real identity so they're bucketed consistently with your backend:
+
+```tsx
+import { useTrafficalClient } from "@traffical/react";
+
+function onLogin(user) {
+  const { client } = useTrafficalClient();
+  client.identify(user.id); // re-buckets this session; subscribe with client.onIdentityChange(fn)
+}
+```
+
+Because the unit key changes, the user may move to a different variant after login — that's
+expected. Server SDKs have no anonymous id; always pass `unitKey` explicitly.
+
+## Plugins (advanced)
+
+All SDKs accept `plugins: [...]` in `config`. `createDebugPlugin()` (from `@traffical/js-client`)
+powers the Traffical DevTools overlay; a custom plugin implements `onDecision` / `onExposure` /
+`onTrack` to observe the event stream (e.g. to feed a debug panel). Optional — not needed for a
+normal integration.
+
+```typescript
+import { createDebugPlugin } from "@traffical/js-client";
+// pass in the provider/client config: plugins: [createDebugPlugin({ instanceId: "my-app" })]
+```
+
 ## Tracking Modes
 
 The `useTraffical()` hook (React/Svelte) supports three modes via `tracking`:

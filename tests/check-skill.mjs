@@ -187,25 +187,29 @@ function checkFences(file, blocks) {
   }
 }
 
+// Base package of a specifier: "@traffical/svelte/sveltekit" → "@traffical/svelte".
+const basePkg = (mod) => (mod.startsWith("@") ? mod.split("/").slice(0, 2).join("/") : mod.split("/")[0]);
+
 function checkJsImports(file, b) {
-  // Module specifiers: flag nonexistent / denied @traffical packages.
+  // Module specifiers: flag nonexistent / denied @traffical packages (subpaths
+  // like @traffical/react/server validate against their base package).
   for (const m of b.content.matchAll(/from\s*["']([^"']+)["']/g)) {
     const mod = m[1];
     if (!mod.startsWith("@traffical/")) continue;
     const line = b.startLine + lineAt(b.content, m.index) - 1;
-    if (!REAL_PACKAGES.has(mod)) {
+    if (!REAL_PACKAGES.has(basePkg(mod))) {
       add("error", file, line, `imports nonexistent package "${mod}"`);
     }
   }
   // Named imports from traffical packages: flag fabricated symbols.
   for (const m of b.content.matchAll(/import\s+(?:type\s+)?\{([^}]+)\}\s+from\s*["'](@traffical\/[^"']+)["']/g)) {
     const pkg = m[2];
-    const known = KNOWN_EXPORTS[pkg];
+    const known = KNOWN_EXPORTS[basePkg(pkg)];
     const line = b.startLine + lineAt(b.content, m.index) - 1;
     const names = m[1].split(",").map((s) => s.trim().split(/\s+as\s+/)[0].trim()).filter(Boolean);
     for (const name of names) {
       if (!known) {
-        if (REAL_PACKAGES.has(pkg)) add("warn", file, line, `cannot verify export "${name}" of ${pkg} (no export list)`);
+        if (REAL_PACKAGES.has(basePkg(pkg))) add("warn", file, line, `cannot verify export "${name}" of ${pkg} (no export list)`);
         continue;
       }
       if (!known.has(name)) add("error", file, line, `"${name}" is not exported by ${pkg}`);

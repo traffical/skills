@@ -67,19 +67,48 @@ function resolveEntry(pkgDir, sub = ".") {
 // Subpath entries the skill/docs reference (server-only bundle fetchers).
 const SUBPATHS = { "@traffical/react": ["./server"], "@traffical/svelte": ["./sveltekit"] };
 
-// ── enumerate runtime exports (fully resolves `export *`) ─────────────────────
+// resolve a subpath's .d.ts (for packages we can't import at runtime, e.g. RN/Svelte)
+function resolveTypes(pkgDir, sub = ".") {
+  const pj = JSON.parse(readFileSync(join(pkgDir, "package.json"), "utf8"));
+  const e = pj.exports?.[sub];
+  const t = (typeof e === "object" && (e.types || e.default?.replace?.(/\.js$/, ".d.ts"))) || pj.types;
+  for (const cand of [t, "dist/index.d.ts", "index.d.ts"]) {
+    if (cand && existsSync(join(pkgDir, cand))) return join(pkgDir, cand);
+  }
+  return null;
+}
+
+// parse value export names from a .d.ts (skips `type`-only and unresolved `export *`)
+function dtsExportNames(file) {
+  const names = new Set();
+  const text = readFileSync(file, "utf8");
+  for (const m of text.matchAll(/export\s+declare\s+(?:async\s+)?(?:function|const|let|var|class)\s+([A-Za-z_]\w*)/g)) names.add(m[1]);
+  for (const m of text.matchAll(/export\s*\{([^}]*)\}/g)) {
+    for (let part of m[1].split(",")) {
+      part = part.trim(); if (!part || part.startsWith("type ")) continue;
+      const as = part.split(/\s+as\s+/); const id = (as[1] || as[0]).trim();
+      if (/^[A-Za-z_]\w*$/.test(id)) names.add(id);
+    }
+  }
+  return names;
+}
+
+// ── enumerate exports: runtime import (resolves `export *`) ∪ .d.ts names ──────
 async function exportsOf(name, pkgDir) {
   const out = new Set();
   const entries = [["@", "."], ...((SUBPATHS[name] || []).map((s) => [name + "/" + s.slice(2), s]))];
   for (const [label, sub] of entries) {
     const entry = resolveEntry(pkgDir, sub);
-    if (!entry || !existsSync(entry)) continue;
-    try {
-      const mod = await import(pathToFileURL(entry).href);
-      for (const k of Object.keys(mod)) if (k !== "default") out.add(k);
-    } catch (e) {
-      console.error(`  warn: could not import ${name}${sub === "." ? "" : " " + sub}: ${e.message.split("\n")[0]}`);
+    if (entry && existsSync(entry)) {
+      try {
+        const mod = await import(pathToFileURL(entry).href);
+        for (const k of Object.keys(mod)) if (k !== "default") out.add(k);
+      } catch (e) {
+        console.error(`  note: ${name}${sub === "." ? "" : " " + sub} not importable (${e.message.split("\n")[0]}) — falling back to .d.ts`);
+      }
     }
+    const dts = resolveTypes(pkgDir, sub);
+    if (dts) for (const n of dtsExportNames(dts)) out.add(n);
   }
   return [...out].sort();
 }
