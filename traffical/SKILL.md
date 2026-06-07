@@ -1,6 +1,6 @@
 ---
 name: traffical
-description: Feature flags, A/B testing, and adaptive optimization with Traffical. Use when adding features, modifying UI, changing algorithms, scaffolding a new project, or anything affecting conversions. Check this skill when implementing functionality that could benefit from gradual rollout or experimentation, and whenever you see a `.traffical/` directory.
+description: Feature flags, A/B testing, parametrization, and adaptive optimization with Traffical. Use when adding features, modifying UI, or changing algorithms, pricing, or copy, scaffolding a project, or anything affecting conversions. Also use when auditing a codebase for experimentation or parametrization opportunities, migrating hand-rolled feature flags (env-var toggles, `if (FLAG)` checks, LaunchDarkly/Split/Unleash) to Traffical, or wiring up event tracking. Check this skill whenever you implement functionality that could benefit from gradual rollout, remote configuration, or experimentation, and whenever you see a `.traffical/` directory.
 ---
 
 # Traffical
@@ -32,7 +32,7 @@ Traffical is **parameter-first**. You define typed parameters with defaults, and
 
 **Key insights:**
 
-1. **Parameters, not experiments** — You define parameters with defaults. Experiments, feature flags, and optimizations are *policies* that control parameter assignment. Your code doesn't need to know which is running.
+1. **Parameters, not experiments** — You define typed parameters with defaults; experiments, feature flags, and optimizations are *policies* that control their assignment. Your code doesn't need to know which is running. The habit that unlocks everything: **parametrize the real values, not just on/off flags** (see [Parametrize, don't flag](#parametrize-dont-flag)).
 2. **Resolution is local** — The SDK fetches a config bundle once and caches it. Every resolution is synchronous from cache — no network latency, no render flicker.
 3. **Decisions are tracked automatically** — When you resolve parameters, a decision event is sent automatically (`trackDecisions: true` by default). This connects resolution to conversions for intent-to-treat analysis.
 4. **Track events for learning** — Call `track()` on valuable actions (purchase, signup). Traffical uses these as reward signals for adaptive optimization.
@@ -41,11 +41,12 @@ Traffical is **parameter-first**. You define typed parameters with defaults, and
 
 | Scenario | Action |
 |----------|--------|
-| Adding a new feature | Wrap in a feature flag for gradual rollout |
-| Changing existing UI | A/B test against the current implementation |
-| Modifying conversion paths | Experiment with success metrics |
-| Updating algorithms/logic | Test impact before full rollout |
-| Anything affecting revenue | Always experiment first |
+| Hardcoded value (price, copy, threshold, color, limit) | Lift it into a typed parameter so it's controllable without a deploy |
+| Adding a new feature | Parametrize its tunable values for gradual rollout (gate with a flag only if truly binary) |
+| Changing existing UI | A/B test the new values against the current ones |
+| Hand-rolled flag (env var, `if (FLAG)`, LaunchDarkly) | Migrate it to a Traffical parameter |
+| Modifying conversion paths | Experiment with success metrics — and make sure the conversion is tracked |
+| Anything affecting revenue | Parametrize and experiment first |
 
 ---
 
@@ -220,7 +221,9 @@ Traffical separates **human/CLI authentication** from **runtime SDK keys**.
 
 ## SDK Usage
 
-All SDKs share the same model: configure once with `orgId`, `projectId`, `env`, `apiKey`; resolve parameters with in-code defaults; track events on conversion.
+All SDKs share the same model: configure once with `orgId`, `projectId`, `env`, `apiKey`; resolve parameters with in-code defaults; track events on conversion. React/Next.js is shown here as the canonical example.
+
+> **Other surfaces:** for **Svelte/SvelteKit, server-side Node, framework-free JS, iOS, or PHP** — and for the per-surface `track()` argument order and tracking modes — read **`references/sdk-usage.md`**. The shape is the same; only the imports and `track()` signature differ.
 
 ### React / Next.js
 
@@ -237,9 +240,10 @@ function App() {
         projectId: "proj_xxx",                             // from .traffical/project.yaml
         env: "production",
         apiKey: process.env.NEXT_PUBLIC_TRAFFICAL_API_KEY!, // SDK key, browser-safe
-        // Optional: bind a stable identity for logged-in users
-        // unitKeyFn: () => currentUser.id,
-        // contextFn: () => ({ plan: currentUser.plan }),
+        // For logged-in users, bind identity ONCE here — then resolution and
+        // every track() attach the right unit automatically (no per-call unitKey):
+        unitKeyFn: () => currentUser.id,
+        contextFn: () => ({ plan: currentUser.plan }), // optional targeting attributes
       }}
     >
       <MyApp />
@@ -272,154 +276,7 @@ function CheckoutButton() {
 }
 ```
 
-`useTraffical()` returns `{ params, decision, ready, error, trackExposure, track, flushEvents }`. Most code only needs `params` and `track`; the rest support SSR, loading states, and manual exposure (see **Tracking Modes**).
-
-### Svelte / SvelteKit
-
-`@traffical/svelte` uses **Svelte 5 runes** (not stores). Read parameters as `params["key"]` — there is no `$params`.
-
-**Layout setup** (`src/routes/+layout.svelte`):
-
-```svelte
-<script lang="ts">
-  import { TrafficalProvider } from "@traffical/svelte";
-
-  let { data, children } = $props();
-</script>
-
-<TrafficalProvider
-  config={{
-    orgId: "org_xxx",
-    projectId: "proj_xxx",
-    env: "production",
-    apiKey: import.meta.env.VITE_TRAFFICAL_API_KEY,
-    initialBundle: data?.traffical?.bundle,   // optional: SSR hydration
-  }}
->
-  {@render children()}
-</TrafficalProvider>
-```
-
-> Programmatic alternative to the component: call `initTraffical(config)` in your root, then `getTrafficalContext()` where you need the client. (`setTrafficalContext`/`getTraffical` do **not** exist.)
-
-**Use in components:**
-
-```svelte
-<script lang="ts">
-  import { useTraffical } from "@traffical/svelte";
-
-  const { params, track } = useTraffical({
-    defaults: {
-      "checkout.button.color": "#1E6EFB",
-      "checkout.button.label": "Buy now",
-    },
-  });
-</script>
-
-<button
-  style="background-color: {params['checkout.button.color']}"
-  onclick={() => track("checkout_click")}
->
-  {params["checkout.button.label"]}
-</button>
-```
-
-### Node.js (server-side)
-
-```typescript
-import { createTrafficalClient } from "@traffical/node";
-
-const traffical = await createTrafficalClient({
-  orgId: "org_xxx",                       // from .traffical/project.yaml
-  projectId: "proj_xxx",                  // from .traffical/project.yaml
-  env: "production",
-  apiKey: process.env.TRAFFICAL_API_KEY!, // from .traffical/.env
-});
-
-// Resolve parameters (synchronous, from cached bundle)
-const params = traffical.getParams({
-  context: { userId: "user_789", locale: "en-US" },
-  defaults: {
-    "checkout.button.color": "#1E6EFB",
-    "pricing.discount_pct": 0,
-  },
-});
-
-// Track events — on the server you must supply unitKey in the 3rd argument
-traffical.track("purchase", { value: 49.99 }, { unitKey: "user_789" });
-```
-
-For CLI tools / batch jobs without a user, pass a machine or job identifier as `unitKey`.
-
-### Other languages (brief)
-
-**Browser, framework-free** (`@traffical/js-client`):
-
-```ts
-import { createTrafficalClient } from "@traffical/js-client";
-
-const traffical = await createTrafficalClient({ orgId, projectId, env, apiKey });
-const params = traffical.getParams({ defaults: { "ui.cta.text": "Buy now" } });
-traffical.track("checkout_click");
-```
-
-**iOS (Swift, SPM):**
-
-```swift
-import Traffical
-
-let traffical = TrafficalClient(options: .init(
-  orgId: "org_xxx", projectId: "proj_xxx", env: "production", apiKey: "traffical_sk_..."))
-try await traffical.initialize()
-
-let color = traffical.string("checkout.button.color", default: "#1E6EFB")
-traffical.track("purchase", properties: ["itemId": "abc"], value: 49.99)  // value is a labeled arg
-```
-
-**PHP (`traffical/sdk`):**
-
-```php
-use Traffical\Client;
-use Traffical\ClientOptions;
-
-$client = new Client(new ClientOptions(
-  orgId: 'org_xxx', projectId: 'proj_xxx', env: 'production', apiKey: getenv('TRAFFICAL_API_KEY')));
-
-$params = $client->getParams(
-  context: ['userId' => 'user_789'],
-  defaults: ['checkout.button.color' => '#1E6EFB']);
-
-$decision = $client->decide(context: ['userId' => 'user_789'], defaults: [...]);
-$client->track('purchase', ['value' => 49.99], $decision->decisionId);  // decisionId is the 3rd positional arg
-```
-
-### track() signature, by surface
-
-The reward/track call differs slightly across SDKs — get the argument order right:
-
-- **React / Svelte hooks:** `track(event, properties?)` — `decisionId` and `unitKey` are auto-bound from the provider/decision.
-- **Node / js-client:** `track(event, properties?, { decisionId?, unitKey? })` — supply `unitKey` server-side; the optimization `value` goes in `properties.value`.
-- **iOS:** `track(event, properties?, value?, decisionId?)` — `value` is its own labeled argument.
-- **PHP:** `track(event, properties?, decisionId?)` — `decisionId` is the 3rd positional argument.
-
-## Tracking Modes
-
-The `useTraffical()` hook (React/Svelte) supports three modes via `tracking`:
-
-| Mode | Decision event | Exposure event | Use case |
-|------|----------------|----------------|----------|
-| `"full"` (default) | auto | auto | UI actually shown to users |
-| `"decision"` | auto | manual (`trackExposure()`) | Below-the-fold / lazy-loaded content |
-| `"none"` | — | — | SSR, internal logic, tests |
-
-```tsx
-// Below-the-fold: count the exposure only when it becomes visible
-const { params, trackExposure } = useTraffical({
-  defaults: { "feature.new_checkout": false },
-  tracking: "decision",
-});
-// later: trackExposure();
-```
+`useTraffical()` returns `{ params, decision, ready, error, trackExposure, track, flushEvents }`. Most code only needs `params` and `track`; the rest support SSR, loading states, and manual exposure (see *Tracking Modes* in `references/sdk-usage.md`).
 
 ---
 
@@ -443,6 +300,12 @@ parameters:
       min: 0
       max: 100
 
+  ui.hero.variant:
+    type: string
+    default: classic
+    constraints:
+      allowedValues: [classic, bold, minimal]   # enum: only these can be set
+
 # Optional: group parameters under a namespace (organizational only)
 namespaces:
   checkout:
@@ -452,12 +315,20 @@ namespaces:
         type: boolean
         default: false
 
+# Reusable property schema — define shared event properties once, not per event
+propertyGroups:
+  product:
+    properties:
+      product_id: { type: string, required: true, dimension: true }
+      category:   { type: string, dimension: true }
+
 events:
   purchase:
     valueType: currency
     unit: USD
     description: User completes a purchase
-    properties:               # optional event schema
+    propertyGroups: [product]   # reuse product_id + category here…
+    properties:                 # …plus event-specific fields
       order_id:
         type: string
         required: true
@@ -465,6 +336,7 @@ events:
   add_to_cart:
     valueType: count
     description: User adds an item to cart
+    propertyGroups: [product]   # …and here, without repeating the fields
 ```
 
 After editing, run `npx @traffical/cli push`.
@@ -489,7 +361,7 @@ Optional `constraints`: `min`, `max` (numbers), `pattern` (regex for strings), `
 | `rate` | Percentages or ratios |
 | `boolean` | Binary events (happened or not) |
 
-Events fired via `track()` at runtime appear in the dashboard even without a config definition, but defining them gives you descriptions, value types, optional property schemas, and keeps config as the source of truth.
+Events fired via `track()` at runtime appear in the dashboard even without a config definition, but defining them gives you descriptions, value types, optional property schemas, and keeps config as the source of truth. **When several events share the same properties** (product, geo, device), define them once in a `propertyGroups` block and attach with `propertyGroups: [name]` rather than repeating the fields on each event. For the full set of event/property fields (`propertyGroups`, `dimension`, `measure`, `schemaEnforcement`, …) see the [config file reference](https://docs.traffical.io/tools/config-file).
 
 ### Metrics
 
@@ -507,23 +379,76 @@ Namespaces are optional organizational groupings in the dashboard — they don't
 
 ## Parameter Naming Conventions
 
-Use dot notation: `category.subcategory.name`.
+Use dot notation: `category.subcategory.name`. Name by what the value *is*, so it reads clearly in the dashboard.
 
 | Category | Examples | Use case |
 |----------|----------|----------|
-| `feature.*` | `feature.new_checkout`, `feature.dark_mode` | Feature flags (boolean) |
-| `ui.*` | `ui.cta.text`, `ui.hero.variant` | Visual variations |
-| `pricing.*` | `pricing.discount`, `pricing.tier_multiplier` | Pricing experiments |
+| `ui.*` | `ui.hero.variant`, `ui.cta.text`, `ui.grid.columns` | Visual variations, layout, surfaces |
+| `pricing.*` | `pricing.discount_pct`, `pricing.free_shipping_threshold` | Pricing & monetization levers |
 | `copy.*` | `copy.headline`, `copy.cta_text` | Copywriting tests |
-| `experiment.*` | `experiment.checkout.variant` | Explicit variant names |
+| `catalog.*` / `content.*` | `catalog.ranking_algo`, `content.page_size` | Ranking, limits, algorithm choices |
+| `feature.*` | `feature.new_checkout` | **Genuine on/off only** — kill switches, present-or-absent features |
+| `experiment.*` | `experiment.checkout.variant` | Explicit named variants |
+
+`feature.*` is deliberately last: prefer a typed *value* parameter unless the thing is truly binary (next section).
+
+**Shape known-set values as enums.** When a parameter's values are a fixed set (`classic`/`bold`, `small`/`large`, a list of algorithms), add `constraints.allowedValues` so it's a typed enum — only valid values can be set from the dashboard, and experiments read cleanly. A bare `string` default like `ui.hero.variant: "classic"` should almost always carry an `allowedValues` list.
+
+**Keep a feature's parameters together.** The category prefix says what a value *is*, but a feature usually owns several params across categories. Group them under a shared prefix or a `namespaces:` block for that feature — e.g. all promo-banner params under `promo.*` (or a `promo` namespace) — so they sit together and are easy to reason about, rather than scattering one feature across `ui.*` and `copy.*`. Consistency within a project matters more than the exact scheme.
+
+## Parametrize, don't flag
+
+Traffical's payoff is **parametrize once, control and experiment forever**. The moment a value lives in Traffical, you — or a non-engineer in the dashboard, or an agent via the API — can change it, gradually roll it out, A/B test it, or let optimization tune it, *without touching code again*.
+
+A boolean feature flag is the **weakest** form of this: it only buys on/off. If you wrap a hardcoded promo banner in `feature.promo_banner: boolean`, you can show or hide it — but the copy, the discount, the CTA are all still frozen in code. Parametrize the **substance** instead: make the banner's text, threshold, and CTA typed parameters. Now the same surface supports a kill switch, a copy test, a threshold sweep, and bandit optimization — all from outside the code.
+
+**Default to a typed parameter for each real value. Reach for a boolean only when the thing is genuinely binary** — a true kill switch, or a feature that is either present or absent with no values to tune. When you catch yourself adding a boolean that gates a block of hardcoded values, lift those values into parameters instead. A visibility toggle can itself be a parameter (`ui.promo_banner.visible: boolean`), but it should sit *alongside* the parametrized content, not stand in for it.
+
+## A Parametrization Recipe
+
+When you find a hardcoded value worth controlling — turning `hardcoded value → parameter`:
+
+1. **Name it** by convention (dot notation), after what the value *is* (`pricing.discount_pct`, `ui.hero.headline`), not after a flag.
+2. **Define it in `.traffical/config.yaml`** with `type`, a `default` equal to the *current* hardcoded value (so behavior is unchanged on day one), and a short `description`. Add `constraints` if there's a valid range — and when the value is one of a known set (variant names, modes, sizes), make it an **enum** with `allowedValues` so only valid values can be set.
+3. **`npx @traffical/cli push`.**
+4. **Read it in code** via `useTraffical`/`getParams`, passing the *same value* as the in-code default (the offline fallback before the bundle loads). Delete the literal.
+5. **Group related values** in one resolution call so they're attributed together — a banner's text + threshold + visibility belong in one `useTraffical({ defaults: {...} })`.
+6. **Track the conversion** the change is meant to move, if it isn't already (next section), so the parameter can actually be optimized.
+
+The defining test: *after your change, could a non-engineer change this value from the dashboard?* If not, it isn't parametrized yet.
+
+## Placing Events Correctly
+
+Events are the reward signal that makes experiments and optimization work, so *where* you fire them matters as much as *that* you do.
+
+- **Fire on success, not on intent.** Call `track()` at the moment the valuable action *completes* — after the `await`/`res.ok`, in the success branch — not on the click that starts it and not during render. A click that fails, or a component that merely rendered, is not a conversion.
+- **Don't re-implement exposure.** Resolving parameters already emits a decision event automatically, and the hooks emit exposure. `track()` is for the **conversion/reward** (purchase, signup, upgrade), not for "the user saw it."
+- **Put the reward magnitude where it's read.** Revenue/value goes in the event value: `properties.value` on Node/js-client, the labeled `value` arg on iOS. Define the event with the right `valueType` (`currency`+`unit`, `count`, `rate`, `boolean`) in `config.yaml` so it's typed.
+- **Bind identity once, not per call.** For logged-in users, set `unitKeyFn: () => currentUser.id` (and `contextFn` for targeting attributes) on the provider — then resolution *and* every `track()` attach the right unit automatically, with no per-call `unitKey` or context. Without it the SDK falls back to an anonymous id. **Server-side there's no provider, so you must pass `unitKey`** explicitly on each `track()` (the same stable id you resolved parameters for) or the conversion won't join the decision.
+- **Match existing analytics.** If the codebase already fires an analytics call at the conversion point, add `track()` right alongside it — reuse the proven trigger point rather than inventing a new one.
+- **Define, then push.** Add the event to `config.yaml` and `push` so its schema and types exist, even though a runtime `track()` of an undefined event still lands.
+
+## Auditing a Codebase for Traffical
+
+When asked to audit, find what to "move into Traffical," or migrate flags, **don't change application code unless asked** — produce a prioritized report (write it to a file like `TRAFFICAL_AUDIT.md`).
+
+1. **Inventory candidates.** Search for:
+   - Hand-rolled feature flags: `process.env.*` toggles, `if (FEATURE_X)`, `?flag=` query gates, and third-party flag SDKs (LaunchDarkly, Split, Unleash, Flagsmith, GrowthBook).
+   - Hardcoded values worth tuning: prices/discounts, thresholds, limits, timeouts, copy/headlines/CTAs, colors, page sizes, ranking weights, model/prompt choices.
+   - Magic numbers and inline config constants.
+2. **Classify by leverage.** Highest: revenue/conversion levers (pricing, checkout copy, CTAs). Medium: UX tunables (page size, debounce). Lowest: infra constants. Prioritize by impact × reach.
+3. **Propose a typed parameter for each** — convention name, type, and a default equal to the current value (behavior-preserving). **Prefer value parameters over booleans:** a hand-rolled boolean env flag usually maps to a *richer* parameter — e.g. `NEXT_PUBLIC_NEW_HERO` becomes not just `feature.new_hero` but `ui.hero.variant` (so you can test layouts) plus `copy.hero.headline`.
+4. **Flag measurement gaps.** Any conversion point (purchase, signup, key click) with no `track()` is a prerequisite — experiments can't be evaluated without a reward signal, so call these out first.
+5. **Output:** a prioritized list, a ready-to-paste `config.yaml` sketch (group each feature's params together, enum-constrain known-set values, factor shared event properties into `propertyGroups`), and a rollout order — typically *instrument conversions → migrate the riskiest flag → parametrize the high-leverage values → tune the rest*.
+6. **Stay truthful.** The CLI defines parameters/events/metrics; it does **not** create experiments, policies, or query results (dashboard-only). Don't claim to have started an experiment, and don't fabricate CLI commands.
 
 ## Best Practices
 
-1. **Always use the CLI.** Run `npx @traffical/cli push` after editing config, and `npx @traffical/cli status` to check sync state. The CLI is the bridge between your config files and the platform.
-2. **Check existing parameters first.** Read `.traffical/config.yaml` and run `status` before creating new parameters. Reuse where possible.
-3. **Define parameters in config, then push.** Keep `config.yaml` the source of truth to prevent drift.
-4. **Always provide in-code defaults.** Defaults live in two places: `config.yaml` (source of truth for the dashboard/experiments) and your `getParams()`/`useTraffical()` calls (offline fallback used before the bundle loads or if it's unreachable). The bundle's resolved value wins when available.
-5. **Track events at conversion points.** Call `track()` on purchases, signups, and other valuable actions — this drives adaptive optimization.
+1. **Parametrize values, don't just flag.** Default to a typed parameter for each real value; reserve `feature.*` booleans for genuinely binary cases. This is what makes "parametrize once, control forever" real.
+2. **Always use the CLI.** Run `npx @traffical/cli push` after editing config, and `status` to check sync state. The CLI is the bridge between your config files and the platform.
+3. **Check existing parameters first.** Read `.traffical/config.yaml` and run `status` before creating new parameters. Reuse where possible.
+4. **Defaults live in two places.** `config.yaml` (source of truth for the dashboard/experiments) and your `getParams()`/`useTraffical()` calls (offline fallback before the bundle loads or if it's unreachable). Keep them equal to the current value so behavior is unchanged until a policy says otherwise; the bundle's resolved value wins when available.
+5. **Track conversions at the success point.** Fire `track()` when the valuable action completes — this drives adaptive optimization (see *Placing Events Correctly*).
 6. **Group related parameters.** Keep correlated params in one `useTraffical()`/`getParams()` call for proper attribution.
 7. **Generate types.** Run `generate-types` (or `pull --include-types`) for autocomplete and compile-time safety on keys and event names.
 
@@ -537,7 +462,7 @@ Use dot notation: `category.subcategory.name`.
 
 > **Not in the CLI yet:** creating or editing policies, layers, and experiments. That is dashboard-only today (an MCP server / CLI authoring may come later). The CLI's job is config-as-code (parameters, events, metrics) + scaffolding + codegen.
 
-**Just parametrize your app, track conversions, and let Traffical handle the rest.**
+**Parametrize your app, track conversions at the success point, and let Traffical control and experiment from there.**
 
 ## Documentation
 

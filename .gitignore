@@ -1,0 +1,10 @@
+# Behavioral eval run scratch — large (vendored node_modules), regenerable,
+# and now homed in the separate private repo `traffical/skills-evals`.
+traffical-workspace/
+
+# Eval definitions/harness live in `traffical/skills-evals`, not this public repo.
+evals/
+
+# Misc
+.DS_Store
+*.log

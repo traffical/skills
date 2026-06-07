@@ -237,6 +237,20 @@ function discoverSkillFiles() {
   return out;
 }
 
+/** Reference markdown files bundled next to a SKILL.md (references/*.md). Their
+ *  fenced code is held to the same ground truth, but they have no frontmatter. */
+function discoverReferenceFiles(skillFile) {
+  const dir = join(dirname(skillFile), "references");
+  try {
+    return readdirSync(dir)
+      .filter((f) => f.endsWith(".md"))
+      .map((f) => join(dir, f))
+      .filter((p) => statSync(p).isFile());
+  } catch {
+    return [];
+  }
+}
+
 const args = process.argv.slice(2).filter((a) => !a.startsWith("-"));
 const files = args.length ? args : discoverSkillFiles();
 
@@ -250,6 +264,14 @@ for (const file of files) {
   checkFrontmatter(file, text);
   checkFences(file, extractFences(text));
   await checkLinks(file, text);
+
+  // Bundled reference docs share the ground truth (code/commands) but skip
+  // the frontmatter check — they're loaded by SKILL.md, not standalone skills.
+  for (const ref of discoverReferenceFiles(file)) {
+    const refText = readFileSync(ref, "utf-8");
+    checkFences(ref, extractFences(refText));
+    await checkLinks(ref, refText);
+  }
 }
 
 // ──────────────────────────────────────────────────────────────────────────
