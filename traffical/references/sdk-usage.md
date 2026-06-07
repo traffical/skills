@@ -23,7 +23,7 @@ All SDKs share the same model: configure once with `orgId`, `projectId`, `env`, 
     projectId: "proj_xxx",
     env: "production",
     apiKey: import.meta.env.VITE_TRAFFICAL_API_KEY,
-    localConfig: data?.traffical?.bundle,   // optional: SSR hydration (server-fetched bundle)
+    initialBundle: data?.traffical?.bundle,   // optional: SSR hydration (Svelte's primary field; localConfig also accepted)
   }}
 >
   {@render children()}

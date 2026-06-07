@@ -240,12 +240,12 @@ function App() {
         projectId: "proj_xxx",                             // from .traffical/project.yaml
         env: "production",
         apiKey: process.env.NEXT_PUBLIC_TRAFFICAL_API_KEY!, // SDK key, browser-safe
+        // For logged-in users, bind identity ONCE here (a field of `config`) so
+        // resolution and every track() attach the right unit — no per-call unitKey.
+        // Priority: identify() override > unitKeyFn > auto anonymous stable id.
+        unitKeyFn: () => currentUser.id,
+        contextFn: () => ({ plan: currentUser.plan }), // dynamic targeting attributes
       }}
-      // Provider-level props (siblings of `config`). For logged-in users, bind
-      // identity ONCE here so resolution and every track() attach the right unit
-      // automatically — no per-call unitKey. contextFn supplies dynamic targeting.
-      unitKeyFn={() => currentUser.id}
-      contextFn={() => ({ plan: currentUser.plan })}
     >
       <MyApp />
     </TrafficalProvider>
@@ -425,7 +425,7 @@ Events are the reward signal that makes experiments and optimization work, so *w
 - **Fire on success, not on intent.** Call `track()` at the moment the valuable action *completes* — after the `await`/`res.ok`, in the success branch — not on the click that starts it and not during render. A click that fails, or a component that merely rendered, is not a conversion.
 - **Don't re-implement exposure.** Resolving parameters already emits a decision event automatically, and the hooks emit exposure. `track()` is for the **conversion/reward** (purchase, signup, upgrade), not for "the user saw it."
 - **Put the reward magnitude where it's read.** Revenue/value goes in the event value: `properties.value` on Node/js-client, the labeled `value` arg on iOS. Define the event with the right `valueType` (`currency`+`unit`, `count`, `rate`, `boolean`) in `config.yaml` so it's typed.
-- **Bind identity once, not per call.** For logged-in users, pass a provider-level `unitKeyFn={() => currentUser.id}` (a sibling of `config`, not a field inside it) — and `contextFn` for targeting attributes — so resolution *and* every `track()` attach the right unit automatically, with no per-call `unitKey` or context. Without it the SDK uses an auto-generated anonymous id (and calling `client.identify(userId)` later re-buckets that session). **Server-side there's no provider, so you must pass `unitKey`** explicitly on each `track()` (the same stable id you resolved parameters for) or the conversion won't join the decision.
+- **Bind identity once, not per call.** For logged-in users, set `unitKeyFn: () => currentUser.id` in the provider `config` (and `contextFn` for targeting attributes) so resolution *and* every `track()` attach the right unit automatically, with no per-call `unitKey` or context. Without it the SDK uses an auto-generated anonymous id, and calling `client.identify(userId)` (via `useTrafficalClient()`) later re-buckets that session. **Server-side there's no provider, so you must pass `unitKey`** explicitly on each `track()` (the same stable id you resolved parameters for) or the conversion won't join the decision.
 - **Match existing analytics.** If the codebase already fires an analytics call at the conversion point, add `track()` right alongside it — reuse the proven trigger point rather than inventing a new one.
 - **Define, then push.** Add the event to `config.yaml` and `push` so its schema and types exist, even though a runtime `track()` of an undefined event still lands.
 
