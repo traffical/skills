@@ -34,6 +34,7 @@ npx skills add traffical/skills --list
 | Skill | Description |
 |-------|-------------|
 | **traffical** | Feature flags, A/B testing, and experimentation with Traffical. Covers the CLI (login, init, sync, codegen, metrics), config-as-code, all SDKs (React, Svelte, Node, JS, React Native, iOS, PHP), and best practices. |
+| **traffical-changes** | Read-only operate-time companion for Traffical Changes: status of running experiments/canaries/rollouts, evidence and recommendations, guardrail breaches, the decision log, and runtime estimates — via MCP (`api.traffical.io/mcp`) or the management API. |
 
 ## Development
 

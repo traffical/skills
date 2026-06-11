@@ -7,6 +7,8 @@ description: Feature flags, A/B testing, parametrization, and adaptive optimizat
 
 Traffical is a parameter-first experimentation and optimization platform. It unifies feature flags, A/B testing, and contextual bandits into a single system. SDKs resolve parameters locally from a cached config bundle — no per-request API calls, sub-millisecond latency, works offline.
 
+> **Operating a change that's already running?** For operate-time questions — the status of a running experiment/canary/rollout, evidence and guardrails, "should we advance/ship/roll back?", the decision log — use the sibling **`traffical-changes`** skill. This skill covers build-time integration.
+
 ## Mental Model
 
 Traffical is **parameter-first**. You define typed parameters with defaults, and Traffical decides their values per user.

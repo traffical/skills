@@ -74,6 +74,38 @@ const CLI_COMMANDS = new Set([
   "pull", "push", "sync", "status", "import", "generate-types",
 ]);
 
+// MCP tools exposed by the read-only changes server (control-plane POST /mcp,
+// also reachable as plain GETs). Keep in sync with ng/control-plane.
+const MCP_TOOLS = new Set([
+  "list_changes",
+  "get_change",
+  "get_change_evidence",
+  "get_change_decisions",
+  "get_measurement_plan",
+  "preview_transition",
+  "get_change_stats",
+]);
+
+// API paths a skill may reference in fenced examples (`*` = one path segment;
+// matches literal ids and placeholders like $CHANGE_ID / {changeId} alike).
+// Read surface of api.traffical.io + the SDK bundle endpoint.
+const KNOWN_API_PATHS = [
+  "/mcp",
+  "/.well-known/oauth-protected-resource",
+  "/v1/projects/*/changes",
+  "/v1/projects/*/change-stats",
+  "/v1/changes/*",
+  "/v1/changes/*/evidence",
+  "/v1/changes/*/decisions",
+  "/v1/changes/*/policies",
+  "/v1/changes/*/analysis-runs",
+  "/v1/changes/*/measurement-plans",
+  "/v1/changes/*/transitions/preview",
+  "/v1/changes/*/runtime-estimate",
+  "/v1/change-measurement-plans/*",
+  "/v1/config/*",
+];
+
 // Known-wrong tokens that must never appear in example code. Each is a real
 // mistake we have already fixed once; this keeps it from coming back.
 // `langs` (optional) restricts a rule to certain fenced languages — e.g.
@@ -184,6 +216,7 @@ function checkFences(file, blocks) {
     if (JS_LANGS.has(b.lang)) checkJsImports(file, b);
     if (JS_LANGS.has(b.lang)) checkConfigOptions(file, b);
     if (b.lang === "bash" || b.lang === "sh" || b.lang === "shell") checkShell(file, b);
+    checkApiSurface(file, b);
   }
 }
 
@@ -275,6 +308,33 @@ function checkShell(file, b) {
   for (const m of b.content.matchAll(/composer require\s+([a-z0-9][a-z0-9\/-]+)/g)) {
     if (!REAL_PACKAGES.has(m[1])) {
       add("error", file, b.startLine + lineAt(b.content, m.index) - 1, `composer requires nonexistent package "${m[1]}"`);
+    }
+  }
+}
+
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** API surface ground truth (the agent-read surface of traffical-changes plus
+ *  the SDK bundle endpoint): fabricated MCP tool names and nonexistent API
+ *  paths in fenced examples are exactly the drift this catches. */
+function checkApiSurface(file, b) {
+  if (b.lang === "php") return; // PHP SDK methods are snake_case — skip tool-name check
+  // MCP tool names: any tool-shaped snake_case token must be a real tool.
+  for (const m of b.content.matchAll(/\b(?:list|get|preview)_[a-z][a-z0-9_]*\b/g)) {
+    if (!MCP_TOOLS.has(m[0])) {
+      add("error", file, b.startLine + lineAt(b.content, m.index) - 1,
+        `"${m[0]}" is not an MCP tool on api.traffical.io/mcp`);
+    }
+  }
+  // API paths: /v1/... and /.well-known/... in examples must exist.
+  for (const m of b.content.matchAll(/\/(?:v1|\.well-known)\/[A-Za-z0-9_\-.:{}$<>/]*/g)) {
+    const path = m[0].replace(/\/+$/, "");
+    const ok = KNOWN_API_PATHS.some((p) =>
+      new RegExp(`^${p.split("*").map(escapeRe).join("[^/]+")}$`).test(path)
+    );
+    if (!ok) {
+      add("error", file, b.startLine + lineAt(b.content, m.index) - 1,
+        `unknown API path "${path}" — not part of the documented read surface (tests/check-skill.mjs KNOWN_API_PATHS)`);
     }
   }
 }
