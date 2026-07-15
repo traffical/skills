@@ -121,6 +121,18 @@ const DENYLIST = [
   { re: /["'`](?<!traffical_)sk_[a-zA-Z0-9]/, msg: "no bare sk_ server-key — the only SDK key format is traffical_sk_" },
 ];
 
+// The audit.yaml contract documented in references/audit.md. The canonical
+// example there is what agents copy — if it drifts from these enums, every
+// audit an agent produces drifts with it.
+const AUDIT_ENUMS = {
+  status: new Set(["proposed", "accepted", "dismissed", "deferred"]),
+  confidence: new Set(["high", "medium", "low"]),
+  surface: new Set(["frontend", "backend", "email", "notification", "ranking", "ai", "data"]),
+  next: new Set(["parametrize", "instrument-first", "migrate-flag", "discuss"]),
+  type: new Set(["string", "number", "boolean", "json"]),
+};
+const AUDIT_KEY_RE = /^[a-z][a-z0-9_]*(\.[a-z0-9_]+)+$/;
+
 // ── Ground truth generated from the real SDK (tests/sync-ground-truth.mjs). ──
 // Optional & committed: AUGMENTS the hand-maintained sets above so the checker
 // tracks what the SDK actually exports/accepts. It only EXPANDS allowlists —
@@ -216,6 +228,7 @@ function checkFences(file, blocks) {
     if (JS_LANGS.has(b.lang)) checkJsImports(file, b);
     if (JS_LANGS.has(b.lang)) checkConfigOptions(file, b);
     if (b.lang === "bash" || b.lang === "sh" || b.lang === "shell") checkShell(file, b);
+    if (b.lang === "yaml" && /audit\.md$/.test(String(file))) checkAuditYaml(file, b);
     checkApiSurface(file, b);
   }
 }
@@ -335,6 +348,29 @@ function checkApiSurface(file, b) {
     if (!ok) {
       add("error", file, b.startLine + lineAt(b.content, m.index) - 1,
         `unknown API path "${path}" — not part of the documented read surface (tests/check-skill.mjs KNOWN_API_PATHS)`);
+    }
+  }
+}
+
+/** The audit.yaml example in references/audit.md must honor its own contract:
+ *  every enum field uses a documented value, every proposal key is dot-notation.
+ *  Agents copy this example verbatim — drift here becomes drift in every audit. */
+function checkAuditYaml(file, b) {
+  if (!/findings:/.test(b.content)) return;
+  for (const [field, allowed] of Object.entries(AUDIT_ENUMS)) {
+    const re = new RegExp(`^\\s*${field}:\\s*([^#\\n]+)`, "gm");
+    for (const m of b.content.matchAll(re)) {
+      const val = m[1].trim().replace(/^["']|["']$/g, "");
+      if (!allowed.has(val)) {
+        add("error", file, b.startLine + lineAt(b.content, m.index) - 1,
+          `audit.yaml example: "${field}: ${val}" is not a documented value (${[...allowed].join(" | ")})`);
+      }
+    }
+  }
+  for (const m of b.content.matchAll(/^\s*(?:-\s+)?key:\s*([^\s#]+)/gm)) {
+    if (!AUDIT_KEY_RE.test(m[1])) {
+      add("error", file, b.startLine + lineAt(b.content, m.index) - 1,
+        `audit.yaml example: proposal key "${m[1]}" is not dot-notation (category.name)`);
     }
   }
 }
