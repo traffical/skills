@@ -106,5 +106,5 @@ tests/
 ## Learn More
 
 - [Agent Skill docs](https://docs.traffical.io/tools/agent-skill) — the product page for this repo
-- [Traffical Documentation](https://docs.traffical.io) · [Dashboard](https://app.traffical.io)
+- [Traffical Documentation](https://docs.traffical.io) · [Dashboard](https://dashboard.traffical.io)
 - [Agent Skills Specification](https://agentskills.io) · [Skills CLI](https://github.com/vercel-labs/skills)

@@ -480,4 +480,4 @@ When asked to audit a repo, find what to "move into Traffical," discover what's 
 - **SDKs**: https://docs.traffical.io/sdks/overview — React, Svelte, Node, PHP, JavaScript, React Native
 - **CLI**: https://docs.traffical.io/tools/cli
 - **API**: https://docs.traffical.io/api/overview
-- **Dashboard**: https://app.traffical.io
+- **Dashboard**: https://dashboard.traffical.io
